@@ -1,0 +1,55 @@
+# Core AI & PyTorch (CUDA 13.0 — RTX 5090 / Blackwell)
+torch==2.14.1+cu130
+torchvision==0.29.1+cu130
+torchaudio==2.11.1+cu130
+
+# Numerical & Scientific Computing
+numpy==2.5.2
+pandas==3.0.6
+scipy==1.18.1
+scikit-learn==1.9.1
+matplotlib==3.11.2
+seaborn==0.13.2
+sympy==1.14.0
+mpmath==1.3.0
+networkx==3.6.1
+pillow==12.3.0
+
+# Desktop UI & Video Processing
+PySide6==6.11.1
+opencv-python-headless==5.0.0.93
+
+# VLM Inference & Quantization
+transformers==5.17.0
+accelerate==1.15.0
+bitsandbytes==0.50.2
+qwen-vl-utils==0.0.14
+av==18.1.0
+tokenizers==0.23.2
+safetensors==0.8.0
+huggingface-hub==1.33.0
+
+# Utilities & Infrastructure
+tqdm==4.70.1
+psutil==7.2.2
+pyyaml==6.0.3
+regex==2026.9.10
+filelock==3.32.3
+fsspec==2026.7.0
+packaging==26.3
+typing_extensions==4.16.0
+click==8.5.0
+httpx==0.28.1
+httpcore==1.0.9
+requests==2.34.2
+urllib3==2.7.0
+certifi==2026.4.22
+charset-normalizer==3.4.7
+idna==3.15
+
+# Jupyter & Developer Tools
+ipykernel==7.3.0
+ipython==9.17.1
+jupyter_client==8.10.0
+jupyter_core==5.9.1
+tensorboard==2.21.0

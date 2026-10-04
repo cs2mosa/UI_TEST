@@ -1,0 +1,72 @@
+# Environments and Virtualenvs
+.venv/
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Local Storage, Model Weights & Pip Caching (F: drive caches)
+.hf_cache/
+.pip_cache/
+.tmp/
+.cache/
+vlm_test_ui/.cache/
+
+# Python Bytecode and Build Artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# IDE and Editor configurations
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+*.sublime-project
+*.sublime-workspace
+
+# Testing and Coverage
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+nosetests.xml
+coverage.xml
+*.cover
+
+# Logs, Databases and Exports
+*.log
+vlm_results.json
+vlm_results.csv
+*.tmp
+
+# Operating System Files
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+[Dd]esktop.ini
+$RECYCLE.BIN/
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes

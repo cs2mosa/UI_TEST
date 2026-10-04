@@ -1,0 +1,36 @@
+# ============================================================
+# .dockerignore — exclude files that don't belong in the image
+# ============================================================
+
+# Python cache
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+**/*.pyd
+**/.pytest_cache/
+
+# Virtual environments (rebuild inside container)
+.venv/
+.pip_cache/
+
+# HuggingFace model weights (downloaded at runtime; optionally volume-mounted)
+.hf_cache/
+
+# Temp / scratch
+.tmp/
+.idea/
+.git/
+
+# Large video test files (mount at runtime via -v /your/path:/data)
+*.mp4
+*.avi
+*.mkv
+*.mov
+
+# Benchmark result files (written at runtime; mount /results)
+*_benchmark_telemetry.json
+benchmark_results.json
+
+# Windows-specific
+Thumbs.db
+desktop.ini

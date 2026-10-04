@@ -1,0 +1,115 @@
+{
+  "engine": "InfiniPot-V",
+  "chunks": [
+    {
+      "chunk_id": 0,
+      "num_frames": 20,
+      "total_time_s": 98.64666090000537,
+      "ingest_time_s": 93.0483949999907,
+      "compress_time_s": 0.2728847000107635,
+      "gen_time_s": 5.3253593999979785,
+      "latency_per_frame_ms": 4932.333045000269,
+      "vision_tokens_ingested": 1137,
+      "kv_len_pre_compress": 1137,
+      "kv_len_post_compress": 465,
+      "video_grid_thw": [
+        10,
+        16,
+        28
+      ],
+      "tokens_per_frame": 56,
+      "kv_cache_len": 465,
+      "peak_vram_mb": 3471.3779296875,
+      "caption": "A green flatbed truck is loaded with blue industrial drums, parked near a white truck and large silos, suggesting routine material handling in an industrial setting with no immediate safety violations observed.",
+      "score": 0.1
+    },
+    {
+      "chunk_id": 1,
+      "num_frames": 20,
+      "total_time_s": 97.82393969999976,
+      "ingest_time_s": 92.00954600000114,
+      "compress_time_s": 0.05803169999853708,
+      "gen_time_s": 5.756341700005578,
+      "latency_per_frame_ms": 4891.196984999988,
+      "vision_tokens_ingested": 1120,
+      "kv_len_pre_compress": 1585,
+      "kv_len_post_compress": 465,
+      "video_grid_thw": [
+        10,
+        16,
+        28
+      ],
+      "tokens_per_frame": 56,
+      "kv_cache_len": 465,
+      "peak_vram_mb": 3693.970703125,
+      "caption": "A white truck is parked near stacks of blue industrial drums, and a worker is visible near the drums, suggesting potential risk of falling objects or improper handling; however, no immediate danger is evident.",
+      "score": 0.3
+    },
+    {
+      "chunk_id": 2,
+      "num_frames": 20,
+      "total_time_s": 95.60279780000565,
+      "ingest_time_s": 90.55654700001469,
+      "compress_time_s": 0.045843699990655296,
+      "gen_time_s": 5.000389799999539,
+      "latency_per_frame_ms": 4780.139890000282,
+      "vision_tokens_ingested": 1120,
+      "kv_len_pre_compress": 1585,
+      "kv_len_post_compress": 465,
+      "video_grid_thw": [
+        10,
+        16,
+        28
+      ],
+      "tokens_per_frame": 56,
+      "kv_cache_len": 465,
+      "peak_vram_mb": 3693.970703125,
+      "caption": "A worker is handling barrels near a white truck and large silos, which may indicate potential for spillage or equipment interaction, but no immediate danger or violation is evident.",
+      "score": 0.3
+    },
+    {
+      "chunk_id": 3,
+      "num_frames": 20,
+      "total_time_s": 94.9960829000047,
+      "ingest_time_s": 89.70763620000798,
+      "compress_time_s": 0.0471419999958016,
+      "gen_time_s": 5.241287500000908,
+      "latency_per_frame_ms": 4749.804145000235,
+      "vision_tokens_ingested": 1120,
+      "kv_len_pre_compress": 1585,
+      "kv_len_post_compress": 465,
+      "video_grid_thw": [
+        10,
+        16,
+        28
+      ],
+      "tokens_per_frame": 56,
+      "kv_cache_len": 465,
+      "peak_vram_mb": 3693.970703125,
+      "caption": "A person is walking near a white truck and stacks of blue barrels, which may indicate potential unsafe handling or storage practices, but no immediate danger or violation is evident.",
+      "score": 0.3
+    },
+    {
+      "chunk_id": 4,
+      "num_frames": 20,
+      "total_time_s": 99.16465629999584,
+      "ingest_time_s": 94.64665039999818,
+      "compress_time_s": 0.04665940000268165,
+      "gen_time_s": 4.471326999992016,
+      "latency_per_frame_ms": 4958.232814999792,
+      "vision_tokens_ingested": 1120,
+      "kv_len_pre_compress": 1585,
+      "kv_len_post_compress": 465,
+      "video_grid_thw": [
+        10,
+        16,
+        28
+      ],
+      "tokens_per_frame": 56,
+      "kv_cache_len": 465,
+      "peak_vram_mb": 3693.970703125,
+      "caption": "A person is standing near a vehicle loaded with blue barrels, which may indicate potential spill or handling hazard, but no immediate danger is evident.",
+      "score": 0.3
+    }
+  ]
+}

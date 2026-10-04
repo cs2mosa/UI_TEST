@@ -1,0 +1,110 @@
+{
+  "engine": "HERMES",
+  "chunks": [
+    {
+      "chunk_id": 0,
+      "num_frames": 20,
+      "total_time_s": 95.90193409999483,
+      "ingest_time_s": 89.29466300000786,
+      "compress_time_s": 0.3673902000009548,
+      "gen_time_s": 6.2384884000057355,
+      "latency_per_frame_ms": 4795.096704999742,
+      "vision_tokens_ingested": 1120,
+      "kv_len_pre_compress": 1134,
+      "kv_len_post_compress": 1134,
+      "video_grid_thw": [
+        2,
+        16,
+        28
+      ],
+      "kv_cache_len": 1134,
+      "peak_vram_mb": 3226.8173828125,
+      "caption": "A worker is standing near a large industrial drum and a white truck, potentially handling hazardous materials in an unsecured area with no visible safety equipment or barriers.",
+      "score": 0.6
+    },
+    {
+      "chunk_id": 1,
+      "num_frames": 20,
+      "total_time_s": 114.53670539999439,
+      "ingest_time_s": 94.20545510000375,
+      "compress_time_s": 9.697149100000388,
+      "gen_time_s": 10.631674299991573,
+      "latency_per_frame_ms": 5726.8352699997195,
+      "vision_tokens_ingested": 1120,
+      "kv_len_pre_compress": 2254,
+      "kv_len_post_compress": 2014,
+      "video_grid_thw": [
+        2,
+        16,
+        28
+      ],
+      "kv_cache_len": 2014,
+      "peak_vram_mb": 8609.0986328125,
+      "caption": "No clear safety hazard or violation observed; workers are handling barrels in an industrial setting with standard precautions.",
+      "score": 0.1
+    },
+    {
+      "chunk_id": 2,
+      "num_frames": 20,
+      "total_time_s": 119.72619460000715,
+      "ingest_time_s": 95.16166880000674,
+      "compress_time_s": 13.371892900002422,
+      "gen_time_s": 11.190285699995002,
+      "latency_per_frame_ms": 5986.309730000357,
+      "vision_tokens_ingested": 1120,
+      "kv_len_pre_compress": 3134,
+      "kv_len_post_compress": 2014,
+      "video_grid_thw": [
+        2,
+        16,
+        28
+      ],
+      "kv_cache_len": 2014,
+      "peak_vram_mb": 10065.57275390625,
+      "caption": "No clear safety hazards or violations observed; workers appear to be handling barrels in an organized manner, with no immediate danger evident.",
+      "score": 0.1
+    },
+    {
+      "chunk_id": 3,
+      "num_frames": 20,
+      "total_time_s": 124.72814390000713,
+      "ingest_time_s": 93.81855830000131,
+      "compress_time_s": 18.700690699988627,
+      "gen_time_s": 12.207079500003601,
+      "latency_per_frame_ms": 6236.407195000356,
+      "vision_tokens_ingested": 1120,
+      "kv_len_pre_compress": 3134,
+      "kv_len_post_compress": 2014,
+      "video_grid_thw": [
+        2,
+        16,
+        28
+      ],
+      "kv_cache_len": 2014,
+      "peak_vram_mb": 10256.35693359375,
+      "caption": "No clear safety hazard or violation observed; workers appear to be handling drums in an organized manner, with no immediate danger evident.",
+      "score": 0.1
+    },
+    {
+      "chunk_id": 4,
+      "num_frames": 20,
+      "total_time_s": 115.17855379999673,
+      "ingest_time_s": 94.13628549998975,
+      "compress_time_s": 12.466083699997398,
+      "gen_time_s": 8.574202699994203,
+      "latency_per_frame_ms": 5758.927689999837,
+      "vision_tokens_ingested": 1120,
+      "kv_len_pre_compress": 3134,
+      "kv_len_post_compress": 2014,
+      "video_grid_thw": [
+        2,
+        16,
+        28
+      ],
+      "kv_cache_len": 2014,
+      "peak_vram_mb": 10256.85693359375,
+      "caption": "No clear safety hazard or violation observed; routine industrial activity with personnel and vehicles in a controlled environment.",
+      "score": 0.1
+    }
+  ]
+}

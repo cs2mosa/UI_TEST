@@ -1,0 +1,74 @@
+
+# =============================================================================
+# docker-compose.yml — URCA VLM Safety Monitor
+# =============================================================================
+# Usage:
+#   docker compose run benchmark --video /data/video.mp4 --num-chunks 5
+#   docker compose run ui-hermes
+#   docker compose run ui-mock
+# =============================================================================
+
+x-common: &common
+  image: urca-vlm:latest
+  build:
+    context: .
+    dockerfile: Dockerfile
+  # GPU passthrough — requires NVIDIA Container Toolkit on the Ubuntu host
+  runtime: nvidia
+  environment:
+    - NVIDIA_VISIBLE_DEVICES=all
+    - NVIDIA_DRIVER_CAPABILITIES=compute,utility,graphics
+    # HuggingFace token for model download (set in your shell: export HF_TOKEN=hf_...)
+    - HF_TOKEN=${HF_TOKEN:-}
+  volumes:
+    # Persist HF model weights between runs — change left side to your desired host path
+    - ${HF_CACHE_DIR:-./hf_cache}:/workspace/.hf_cache
+    # Mount video files for testing
+    - ${VIDEO_DIR:-./videos}:/data
+    # Benchmark JSON output
+    - ${RESULTS_DIR:-./results}:/results
+  # Forward X11 socket if a physical display is available (optional)
+  # network_mode: host   # uncomment for X11 forwarding
+
+services:
+
+  # ---------------------------------------------------------------------------
+  # Latency benchmark: HERMES vs InfiniPot-V
+  # ---------------------------------------------------------------------------
+  benchmark:
+    <<: *common
+    command: >
+      benchmark
+      --video /data/video.mp4
+      --num-chunks 5
+      --chunk-s 5
+      --overlap-s 1
+      --vlm-fps 4
+      --max-dim 448
+      --output /results/benchmark_results.json
+
+  # ---------------------------------------------------------------------------
+  # HERMES desktop UI (headless Xvfb)
+  # ---------------------------------------------------------------------------
+  ui-hermes:
+    <<: *common
+    command: ui-hermes
+
+  # ---------------------------------------------------------------------------
+  # InfiniPot-V desktop UI (headless Xvfb)
+  # ---------------------------------------------------------------------------
+  ui-infinipot:
+    <<: *common
+    command: ui-infinipot
+
+  # ---------------------------------------------------------------------------
+  # Mock UI — no GPU or model needed; good for quick UI testing
+  # ---------------------------------------------------------------------------
+  ui-mock:
+    <<: *common
+    # No GPU required for mock mode — override the deploy block to remove the GPU reservation
+    deploy:
+      resources:
+        reservations:
+          devices: []
+    command: ui-mock

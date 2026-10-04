@@ -1,0 +1,74 @@
+from __future__ import annotations
+import os
+from dataclasses import dataclass, field
+
+@dataclass
+class AppConfig:
+    # Project paths
+    project_dir: str = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+    hf_cache_dir: str = r"F:\URCA_PROJECTS\.hf_cache"
+    temp_dir: str = r"F:\URCA_PROJECTS\.tmp"
+    cache_dir: str = os.path.join(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")), ".cache")
+
+    # Chunk settings
+    default_chunk_s: float = 5.0
+    default_overlap_s: float = 1.0
+    default_vlm_fps: float = 4.0
+    include_partial_last_window: bool = True
+
+    # Ground truth matching thresholds
+    tol: float = 0.25
+    high_thr: float = 0.66
+
+    # Model settings
+    default_timeout_s: float = 60.0
+    vlm_timeout_s: float = 120.0
+    qwen_model_path: str = "Qwen/Qwen3-VL-4B-Instruct"
+    max_new_tokens: int = 160
+    num_frames: int = 16
+
+    # Default VLM prompt as defined in Design Doc §15.3
+    chunk_prompt: str = (
+        "The video shows an industrial or surveillance scene. One or more people or "
+        "vehicles may be present. Review the video carefully. Describe what is "
+        "happening in one or two sentences, focusing on any safety hazard or "
+        "violation. Then rate the severity of the safety incident from 0.0 to 1.0:\n"
+        "0.0-0.2 routine activity, no hazard; 0.3-0.5 unsafe behaviour without "
+        "immediate danger; 0.6-0.8 clear safety violation or near-miss; "
+        "0.9-1.0 accident or serious danger in progress.\n"
+        'Reply with JSON only: {"caption": "<text>", "score": <number from 0 to 1>}'
+    )
+
+    # Optional label map for categorical ground truths
+    label_map: dict[str, float] = field(default_factory=lambda: {
+        "safe": 0.0,
+        "normal": 0.0,
+        "low": 0.2,
+        "medium": 0.5,
+        "high": 0.8,
+        "hazard": 0.9,
+        "critical": 1.0,
+    })
+
+    # UI Theme Palette (Modern Dark Mode)
+    color_bg: str = "#0f172a"          # slate-900
+    color_surface: str = "#1e293b"     # slate-800
+    color_surface_alt: str = "#334155" # slate-700
+    color_border: str = "#475569"      # slate-600
+    color_text: str = "#f8fafc"        # slate-50
+    color_text_muted: str = "#94a3b8"  # slate-400
+    color_primary: str = "#3b82f6"     # blue-500
+    color_primary_hover: str = "#2563eb"
+    
+    # Severity & Status colors
+    color_safe: str = "#22c55e"        # green-500 (low score)
+    color_warning: str = "#eab308"     # yellow-500 (medium score)
+    color_hazard: str = "#ef4444"      # red-500 (high score)
+    
+    # GT Match colors
+    color_match: str = "#10b981"       # emerald-500
+    color_miss: str = "#ef4444"        # red-500
+    color_fp: str = "#f97316"          # orange-500
+    color_off: str = "#facc15"         # amber-400
+
+DEFAULT_CONFIG = AppConfig()
