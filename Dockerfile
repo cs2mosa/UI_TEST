@@ -8,6 +8,15 @@
 FROM nvidia/cuda:13.0.3-cudnn-devel-ubuntu24.04
 
 # --------------------------------------------------------------------------- #
+# 0. Hardware compatibility fix for GeForce RTX GPUs (sm_120 / RTX 5090)
+# --------------------------------------------------------------------------- #
+# cuda-compat is designed strictly for Datacenter GPUs (A100/H100).
+# On GeForce cards, it attempts forward compatibility and crashes with CUDA Error 804.
+# Removing compat libraries forces PyTorch to use the host's native NVIDIA driver.
+ENV CUDNN_FORWARD_COMPAT_DISABLE=1
+RUN rm -rf /usr/local/cuda/compat /usr/local/cuda-*/compat /etc/ld.so.conf.d/*cuda-compat*.conf 2>/dev/null && ldconfig || true
+
+# --------------------------------------------------------------------------- #
 # 1. OS-level packages + Python 3.13
 # --------------------------------------------------------------------------- #
 ENV DEBIAN_FRONTEND=noninteractive
