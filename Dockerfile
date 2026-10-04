@@ -1,11 +1,11 @@
 # =============================================================================
 # URCA_PROJECTS — VLM Safety Monitor + Latency Benchmark
-# CUDA 13.0 · Python 3.13 · PyTorch 2.14 · PySide6 (headless via Xvfb)
+# CUDA 12.8 · Python 3.13 · PyTorch 2.14 · PySide6 (headless via Xvfb)
 # =============================================================================
 # Base: Ubuntu 24.04 ships glibc 2.39 which is required by Python 3.13 wheels.
-# CUDA 13.0 on the host is backward-compatible with CUDA 12.x containers but
-# we match it directly here so CUDA 13-only features are accessible.
-FROM nvidia/cuda:13.0.0-cudnn9-devel-ubuntu24.04
+# CUDA 12.8 is the first release with full sm_120 (RTX 5090 / Blackwell) support.
+# The host driver (580.x / CUDA 13.0) is backward-compatible with cu128 containers.
+FROM nvidia/cuda:12.8.0-cudnn9-devel-ubuntu24.04
 
 # --------------------------------------------------------------------------- #
 # 1. OS-level packages + Python 3.13
@@ -64,10 +64,10 @@ RUN pip install --no-cache-dir --upgrade pip setuptools wheel
 ENV TORCH_CUDA_ARCH_LIST="12.0+PTX"
 
 RUN pip install --no-cache-dir \
-    torch==2.14.1+cu130 \
-    torchvision==0.29.1+cu130 \
-    torchaudio==2.11.1+cu130 \
-    --index-url https://download.pytorch.org/whl/cu130
+    torch==2.14.1+cu128 \
+    torchvision==0.29.1+cu128 \
+    torchaudio==2.11.1+cu128 \
+    --index-url https://download.pytorch.org/whl/cu128
 
 # All other dependencies — exact versions matching the Windows environment
 # (these all have Python 3.13 cp313 wheels on PyPI)

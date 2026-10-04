@@ -1,7 +1,7 @@
-# Core AI & PyTorch (CUDA 13.0 — RTX 5090 / Blackwell)
-torch==2.14.1+cu130
-torchvision==0.29.1+cu130
-torchaudio==2.11.1+cu130
+# Core AI & PyTorch (CUDA 12.8 — RTX 5090 / Blackwell sm_120)
+torch==2.14.1+cu128
+torchvision==0.29.1+cu128
+torchaudio==2.11.1+cu128
 
 # Numerical & Scientific Computing
 numpy==2.5.2
