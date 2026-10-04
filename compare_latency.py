@@ -27,11 +27,20 @@ import numpy as np
 import cv2
 import torch
 
-MODEL_PATH = (
-    r"F:\URCA_PROJECTS\.hf_cache\hub"
-    r"\models--Qwen--Qwen3-VL-4B-Instruct"
-    r"\snapshots\ebb281ec70b05090aa6165b016eac8ec08e71b17"
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+_default_candidate = os.path.join(
+    BASE_DIR,
+    ".hf_cache", "hub",
+    "models--Qwen--Qwen3-VL-4B-Instruct",
+    "snapshots", "ebb281ec70b05090aa6165b016eac8ec08e71b17",
 )
+if not os.path.exists(_default_candidate):
+    _default_candidate = (
+        r"F:\URCA_PROJECTS\.hf_cache\hub"
+        r"\models--Qwen--Qwen3-VL-4B-Instruct"
+        r"\snapshots\ebb281ec70b05090aa6165b016eac8ec08e71b17"
+    )
+MODEL_PATH = os.environ.get("MODEL_PATH", _default_candidate)
 
 DEFAULT_PROMPT = (
     "The video shows an industrial or surveillance scene. One or more people or "
@@ -125,17 +134,21 @@ def sample_video_chunks(
 # Worker: HERMES
 # ---------------------------------------------------------------------------
 def run_hermes_worker(args):
-    # Set sys.path strictly to vlm_test_ui
-    hermes_root = r"F:\URCA_PROJECTS\vlm_test_ui"
-    if hermes_root not in sys.path:
-        sys.path.insert(0, hermes_root)
+    # Set sys.path strictly to vlm_test_ui (evict any temper paths)
+    hermes_root = os.path.abspath(os.path.join(BASE_DIR, "vlm_test_ui"))
+    infinipot_root = os.path.abspath(os.path.join(BASE_DIR, "temper", "vlm_test_ui"))
+    sys.path = [p for p in sys.path if os.path.abspath(p) != infinipot_root and os.path.abspath(p) != hermes_root]
+    sys.path.insert(0, hermes_root)
+    for mod in list(sys.modules.keys()):
+        if mod == "vlm" or mod.startswith("vlm.") or mod == "app" or mod.startswith("app."):
+            del sys.modules[mod]
 
     from vlm.hermes_runner import HermesStreamingRunner
     from app.core.types import VideoChunk
 
-    print(f"[*] Initializing HERMES worker from {MODEL_PATH}...", flush=True)
+    print(f"[*] Initializing HERMES worker from {args.model_path}...", flush=True)
     runner = HermesStreamingRunner(
-        model_path=MODEL_PATH,
+        model_path=args.model_path,
         prompt=args.prompt,
         kv_size=args.kv_size,
         sample_fps=0.5,
@@ -263,17 +276,21 @@ def run_hermes_worker(args):
 # Worker: InfiniPot-V
 # ---------------------------------------------------------------------------
 def run_infinipot_worker(args):
-    # Set sys.path strictly to temper/vlm_test_ui
-    infinipot_root = r"F:\URCA_PROJECTS\temper\vlm_test_ui"
-    if infinipot_root not in sys.path:
-        sys.path.insert(0, infinipot_root)
+    # Set sys.path strictly to temper/vlm_test_ui (evict any hermes paths)
+    infinipot_root = os.path.abspath(os.path.join(BASE_DIR, "temper", "vlm_test_ui"))
+    hermes_root = os.path.abspath(os.path.join(BASE_DIR, "vlm_test_ui"))
+    sys.path = [p for p in sys.path if os.path.abspath(p) != hermes_root and os.path.abspath(p) != infinipot_root]
+    sys.path.insert(0, infinipot_root)
+    for mod in list(sys.modules.keys()):
+        if mod == "vlm" or mod.startswith("vlm.") or mod == "app" or mod.startswith("app."):
+            del sys.modules[mod]
 
     from vlm.qwen3vl_runner import Qwen3VLRunner
     from app.core.types import VideoChunk
 
-    print(f"[*] Initializing InfiniPot-V worker from {MODEL_PATH}...", flush=True)
+    print(f"[*] Initializing InfiniPot-V worker from {args.model_path}...", flush=True)
     runner = Qwen3VLRunner(
-        model_path=MODEL_PATH,
+        model_path=args.model_path,
         prompt=args.prompt,
         num_frames=16,
         max_new_tokens=args.max_new_tokens,
@@ -464,6 +481,7 @@ def main():
     parser.add_argument("--max-dim", type=int, default=448, help="Max image dimension for downsampling")
     parser.add_argument("--kv-size", type=int, default=2000, help="HERMES max KV size")
     parser.add_argument("--max-new-tokens", type=int, default=160, help="Max tokens generated per chunk")
+    parser.add_argument("--model-path", type=str, default=MODEL_PATH, help="Path to local Qwen model snapshot")
     parser.add_argument("--prompt", type=str, default=DEFAULT_PROMPT, help="Prompt text")
     parser.add_argument("--output", type=str, default="benchmark_results.json", help="Output JSON path")
     args = parser.parse_args()
@@ -499,6 +517,7 @@ def main():
         "--vlm-fps", str(args.vlm_fps),
         "--max-dim", str(args.max_dim),
         "--max-new-tokens", str(args.max_new_tokens),
+        "--model-path", args.model_path,
         "--output", infinipot_out,
     ]
     sub_i = subprocess.run(cmd_infinipot)
@@ -524,6 +543,7 @@ def main():
         "--max-dim", str(args.max_dim),
         "--kv-size", str(args.kv_size),
         "--max-new-tokens", str(args.max_new_tokens),
+        "--model-path", args.model_path,
         "--output", hermes_out,
     ]
     sub_h = subprocess.run(cmd_hermes)

@@ -1,11 +1,11 @@
 # =============================================================================
 # URCA_PROJECTS — VLM Safety Monitor + Latency Benchmark
-# CUDA 12.8 · Python 3.13 · PyTorch 2.14 · PySide6 (headless via Xvfb)
+# CUDA 13.0 · Python 3.13 · PyTorch 2.14 · PySide6 (headless via Xvfb)
 # =============================================================================
 # Base: Ubuntu 24.04 ships glibc 2.39 which is required by Python 3.13 wheels.
-# CUDA 12.8 is the first release with full sm_120 (RTX 5090 / Blackwell) support.
-# The host driver (580.x / CUDA 13.0) is backward-compatible with cu128 containers.
-FROM nvidia/cuda:12.8.0-cudnn9-devel-ubuntu24.04
+# CUDA 13.0.3 is confirmed on Docker Hub with full sm_120 (RTX 5090 / Blackwell) support.
+# Tag format: X.Y.Z-cudnn-devel-ubuntuVV.VV  (no '9' suffix for 13.x images).
+FROM nvidia/cuda:13.0.3-cudnn-devel-ubuntu24.04
 
 # --------------------------------------------------------------------------- #
 # 1. OS-level packages + Python 3.13
@@ -18,8 +18,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     add-apt-repository -y ppa:deadsnakes/ppa && \
     apt-get update && apt-get install -y --no-install-recommends \
     python3.13 python3.13-dev python3.13-venv \
-    # pip bootstrap (not shipped with 3.13 in deadsnakes)
-    python3-pip curl \
+    # curl for health checks / downloads
+    curl \
     # Build tools
     git wget build-essential cmake pkg-config \
     # OpenCV / video codec dependencies
@@ -37,13 +37,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg ca-certificates && \
     rm -rf /var/lib/apt/lists/*
 
-# Install pip for Python 3.13 via get-pip.py (deadsnakes doesn't bundle it)
-RUN curl -sS https://bootstrap.pypa.io/get-pip.py | python3.13
+# Create a Python 3.13 virtual environment — the correct way to use pip on Ubuntu 24.04.
+# Ubuntu enforces PEP 668 (externally-managed-environment); a venv sidesteps all conflicts.
+RUN python3.13 -m venv /opt/venv
 
-# Make python3.13 the system default
-RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.13 1 && \
-    update-alternatives --install /usr/bin/python  python  /usr/bin/python3.13 1 && \
-    update-alternatives --install /usr/bin/pip     pip     /usr/local/bin/pip3.13 1
+# Prepend the venv to PATH so every subsequent RUN, CMD and ENTRYPOINT uses it automatically.
+ENV PATH="/opt/venv/bin:$PATH"
 
 # --------------------------------------------------------------------------- #
 # 2. Working directory layout
@@ -64,10 +63,10 @@ RUN pip install --no-cache-dir --upgrade pip setuptools wheel
 ENV TORCH_CUDA_ARCH_LIST="12.0+PTX"
 
 RUN pip install --no-cache-dir \
-    torch==2.14.1+cu128 \
-    torchvision==0.29.1+cu128 \
-    torchaudio==2.11.1+cu128 \
-    --index-url https://download.pytorch.org/whl/cu128
+    torch==2.14.1+cu130 \
+    torchvision==0.29.1+cu130 \
+    torchaudio==2.11.0+cu130 \
+    --index-url https://download.pytorch.org/whl/cu130
 
 # All other dependencies — exact versions matching the Windows environment
 # (these all have Python 3.13 cp313 wheels on PyPI)

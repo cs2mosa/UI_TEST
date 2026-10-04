@@ -2,10 +2,10 @@ from __future__ import annotations
 import os
 import sys
 
-# Ensure Hugging Face cache is strictly on F: drive
-os.environ["HF_HOME"] = r"F:\URCA_PROJECTS\.hf_cache"
-os.environ["HUGGINGFACE_HUB_CACHE"] = r"F:\URCA_PROJECTS\.hf_cache\hub"
-os.environ["TRANSFORMERS_CACHE"] = r"F:\URCA_PROJECTS\.hf_cache\transformers"
+# Ensure Hugging Face cache location respects environment if set
+os.environ.setdefault("HF_HOME", r"F:\URCA_PROJECTS\.hf_cache")
+os.environ.setdefault("HUGGINGFACE_HUB_CACHE", os.path.join(os.environ["HF_HOME"], "hub"))
+os.environ.setdefault("TRANSFORMERS_CACHE", os.path.join(os.environ["HF_HOME"], "transformers"))
 
 import copy
 import json
