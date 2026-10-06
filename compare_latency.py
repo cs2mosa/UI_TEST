@@ -68,13 +68,13 @@ DEFAULT_PROMPT = (
 )
 
 
-def ensure_model_path(model_path: str) -> str:
+def ensure_model_path(model_path: str, repo_id: str = "Qwen/Qwen3-VL-4B-Instruct") -> str:
     """Ensures model snapshot exists locally; downloads it automatically if missing."""
     if os.path.isdir(model_path) and any(os.scandir(model_path)):
         return model_path
 
     print(f"[*] Local model directory not found at: {model_path}", flush=True)
-    print(f"[*] Downloading 'Qwen/Qwen3-VL-4B-Instruct' via huggingface_hub...", flush=True)
+    print(f"[*] Downloading '{repo_id}' via huggingface_hub...", flush=True)
     try:
         from huggingface_hub import snapshot_download
     except ImportError:
@@ -87,7 +87,7 @@ def ensure_model_path(model_path: str) -> str:
 
     os.makedirs(hf_cache, exist_ok=True)
     downloaded_dir = snapshot_download(
-        repo_id="Qwen/Qwen3-VL-4B-Instruct",
+        repo_id=repo_id,
         cache_dir=hf_cache,
     )
     print(f"[+] Model ready at: {downloaded_dir}", flush=True)
@@ -770,7 +770,8 @@ def main():
     parser.add_argument("--prompt", type=str, default=DEFAULT_PROMPT, help="Prompt text")
     parser.add_argument("--output", type=str, default="benchmark_results.json", help="Output JSON path")
     args = parser.parse_args()
-    args.model_path = ensure_model_path(args.model_path)
+    args.model_path = ensure_model_path(args.model_path, repo_id="Qwen/Qwen3-VL-4B-Instruct")
+    args.jev_model_path = ensure_model_path(args.jev_model_path, repo_id="OmniJev/OneJev-0.8B")
 
     if args.mode == "worker":
         if args.engine == "hermes":

@@ -48,9 +48,18 @@ def main():
     if not os.path.isfile(args.video):
         print(f"[!] Video file not found: {args.video}")
         sys.exit(1)
-    if not os.path.isdir(args.jev_model_path):
-        print(f"[!] OneJev model path not found: {args.jev_model_path}")
-        sys.exit(1)
+    if not (os.path.isdir(args.jev_model_path) and any(os.scandir(args.jev_model_path))):
+        print(f"[*] OneJev model path not found at: {args.jev_model_path}", flush=True)
+        print("[*] Downloading 'OmniJev/OneJev-0.8B' via huggingface_hub...", flush=True)
+        try:
+            from huggingface_hub import snapshot_download
+            hf_cache = os.environ.get("HF_HOME", os.path.join(BASE_DIR, ".hf_cache"))
+            os.makedirs(hf_cache, exist_ok=True)
+            args.jev_model_path = snapshot_download(repo_id="OmniJev/OneJev-0.8B", cache_dir=hf_cache)
+            print(f"[+] OneJev ready at: {args.jev_model_path}", flush=True)
+        except Exception as e:
+            print(f"[!] Failed to auto-download OneJev: {e}")
+            sys.exit(1)
 
     cap = cv2.VideoCapture(args.video)
     fps = cap.get(cv2.CAP_PROP_FPS) or 20.0
