@@ -38,14 +38,41 @@ class AppConfig:
 
     # Default VLM prompt as defined in Design Doc §15.3
     chunk_prompt: str = (
-        "The video shows an industrial or surveillance scene. One or more people or "
-        "vehicles may be present. Review the video carefully. Describe what is "
-        "happening in one or two sentences, focusing on any safety hazard or "
-        "violation. Then rate the severity of the safety incident from 0.0 to 1.0:\n"
-        "0.0-0.2 routine activity, no hazard; 0.3-0.5 unsafe behaviour without "
-        "immediate danger; 0.6-0.8 clear safety violation or near-miss; "
-        "0.9-1.0 accident or serious danger in progress.\n"
-        'Reply with JSON only: {"caption": "<text>", "score": <number from 0 to 1>}'
+        "You are a safety monitor reviewing a short clip from a fixed warehouse or industrial "
+        "CCTV camera. Workers, forklifts, pallets and racking may be present.\n\n"
+        "Look carefully for these hazards:\n"
+        "1. Pedestrian-vehicle: a person on foot in the path of, or very close to, a moving "
+        "forklift, pallet jack or truck.\n"
+        "2. Missing PPE: a worker in an active work area without a hi-vis vest or hard hat.\n"
+        "3. Blocked access: a fire exit, emergency equipment or marked aisle obstructed by "
+        "goods or equipment.\n"
+        "4. Unsafe load: stacked or carried goods leaning, overhanging, raised too high while "
+        "moving, or falling.\n"
+        "5. Fall or spill: a person on the floor, or a spill, debris or object on the walking "
+        "or driving surface.\n"
+        "Also note any other clearly unsafe behaviour, such as running, climbing racking or "
+        "riding on forks.\n\n"
+        "Rules:\n"
+        "- Describe only what is clearly visible. Do not guess or invent details. A hazard "
+        "needs visible evidence, not just the presence of a person or a forklift.\n"
+        "- If there is no hazard, say briefly what is happening and give a low score.\n"
+        "- If there are several hazards, describe the most severe first and score that one.\n"
+        "- Caption: one or two short sentences, under 40 words, saying who or what is involved, "
+        "where they are relative to the danger, and why it is unsafe.\n\n"
+        "Score the most severe situation in the clip from 0.0 to 1.0:\n"
+        "0.0-0.2 routine activity, no hazard; 0.3-0.5 unsafe behaviour without immediate "
+        "danger; 0.6-0.8 clear safety violation or near-miss; "
+        "0.9-1.0 accident or serious danger in progress.\n\n"
+        "Reply with JSON only, with no markdown fences and no other text, using exactly this form: "
+        '{"caption": "<text>", "score": <number from 0 to 1>}\n'
+        "Do not use double quotes or braces inside the caption.\n\n"
+        "Format examples (illustration of style only, do not copy their content):\n"
+        '{"caption": "A worker in a hi-vis vest and hard hat walks along a marked aisle while a '
+        'forklift is parked nearby.", "score": 0.1}\n'
+        '{"caption": "A worker without a hard hat stands in the forklift lane as a loaded forklift '
+        'approaches within two metres.", "score": 0.8}\n'
+        '{"caption": "A stack of boxes collapses into the aisle beside a worker who is knocked off '
+        'balance.", "score": 0.9}'
     )
 
     # Optional label map for categorical ground truths

@@ -25,13 +25,28 @@ from app.core.types import TickRecord
 # Verbatim from hazard_monitor.HAZARDS (D-3, D-6, rule 3 in §0.2)
 # ---------------------------------------------------------------------------
 HAZARD_QUESTIONS: dict[str, str] = {
-    "pedestrian_vehicle": "A person is in danger of being struck by a forklift or other moving vehicle",
-    "no_ppe": "A person is working without required PPE (hi-vis vest or hard hat)",
-    "blocked_exit": "An aisle, fire exit or emergency equipment is blocked",
-    "unsafe_load": "A load is unstable, overhanging or about to fall",
-    "fall_or_spill": "A person has fallen, or there is a spill or obstruction on the floor",
+    "pedestrian_vehicle": (
+        "A person on foot is in the path of, or very close to, a moving forklift, "
+        "pallet jack or other powered vehicle, so that a collision or near-miss could occur "
+        "(a person merely visible in the same aisle at a safe distance does not count)"
+    ),
+    "no_ppe": (
+        "At least one person in an active work area is not wearing a high-visibility vest "
+        "or a hard hat (a person wearing both does not count)"
+    ),
+    "blocked_exit": (
+        "A fire exit, emergency door, fire extinguisher, emergency equipment or a marked "
+        "aisle is obstructed by pallets, boxes, equipment or other objects"
+    ),
+    "unsafe_load": (
+        "A load is unsafe: stacked goods are leaning, collapsing or overhanging, a vehicle is "
+        "moving with its load raised high or tilted, or items are falling or about to fall"
+    ),
+    "fall_or_spill": (
+        "A person is on the floor after a fall or slip, or there is a liquid spill, debris "
+        "or an object on the walking or driving surface that creates a slip, trip or collision risk"
+    ),
 }
-
 
 # ---------------------------------------------------------------------------
 # JevDecider Protocol (§7.3)
@@ -243,7 +258,16 @@ class OneJevDecider:
 
         # State block (Appendix A §3)
         import json as _json
-        state = {"task": "Warehouse CCTV safety monitoring. Judge the clip.", "camera": "cam-1", "clip": "<video:1>"}
+        state = {
+            "task": (
+                "Warehouse CCTV safety monitoring. The clip is a short (about 3 seconds) view from a "
+                "fixed indoor camera showing workers, forklifts and stored goods. Judge only what is "
+                "visible in the clip. Answer yes only if the described condition is actually occurring "
+                "or clearly about to occur, not merely because the relevant objects are present."
+            ),
+            "camera": "cam-1",  # per camera, e.g. "cam-2: loading dock, wide view of two bays"
+            "clip": "<video:1>",
+        }
         state_str = f"<state>\n{_json.dumps(state, indent=2)}\n</state>"
 
         results: dict[str, float] = {}
