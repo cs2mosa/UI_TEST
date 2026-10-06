@@ -1,0 +1,51 @@
+{
+  "engine": "JEV+HERMES",
+  "chunks": [
+    {
+      "chunk_id": 0,
+      "num_frames": 20,
+      "total_time_s": 235.61453809999512,
+      "ingest_time_s": 100.95611709999503,
+      "compress_time_s": 0.35254200000781566,
+      "gen_time_s": 4.918835099990247,
+      "latency_per_frame_ms": 11780.726904999756,
+      "vision_tokens_ingested": 1120,
+      "kv_len_pre_compress": 1134,
+      "kv_len_post_compress": 1134,
+      "kv_cache_len": 1134,
+      "peak_vram_mb": 4912.84033203125,
+      "caption": "No safety hazards or violations detected; the scene appears static with no active risk or unsafe behavior.",
+      "score": 0.1,
+      "jev_time_s": 129.38553209998645,
+      "jev_tier": "FULL",
+      "jev_reason": "above_full",
+      "jev_pmax": 0.4073334336280823,
+      "frames_sent": 20,
+      "frames_full_equiv": 20,
+      "net_total_time_s": 106.22900600000867
+    },
+    {
+      "chunk_id": 1,
+      "num_frames": 20,
+      "total_time_s": 356.35232219996396,
+      "ingest_time_s": 132.98571169999195,
+      "compress_time_s": 12.64250380001613,
+      "gen_time_s": 28.705675000004703,
+      "latency_per_frame_ms": 17817.6161099982,
+      "vision_tokens_ingested": 1120,
+      "kv_len_pre_compress": 2254,
+      "kv_len_post_compress": 2014,
+      "kv_cache_len": 2014,
+      "peak_vram_mb": 9992.77001953125,
+      "caption": "No safety hazards or violations detected; the scene appears static with no movement or risk indicators.",
+      "score": 0.1,
+      "jev_time_s": 182.01682589997654,
+      "jev_tier": "FULL",
+      "jev_reason": "above_full",
+      "jev_pmax": 0.4073334336280823,
+      "frames_sent": 20,
+      "frames_full_equiv": 20,
+      "net_total_time_s": 174.33549629998743
+    }
+  ]
+}

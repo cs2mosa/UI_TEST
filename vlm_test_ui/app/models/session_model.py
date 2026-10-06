@@ -1,6 +1,6 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 from typing import Optional
-from app.core.types import VLMEvent
+from app.core.types import VLMEvent, GateRecord
 
 class SessionModel:
     """
@@ -18,10 +18,15 @@ class SessionModel:
         self.gt_enabled: bool = False
         self.gt_filename: Optional[str] = None
         self.gt_error: Optional[str] = None
+        # JEV gate records (Phase 1 additions, §6.3)
+        self.gate_records: list[GateRecord] = []
+        self.gate_meta: dict = {}
 
     def clear(self):
         self.events.clear()
         self.active_event_id = None
+        self.gate_records.clear()
+        self.gate_meta = {}
 
     def add_event(self, event: VLMEvent):
         # Insert or replace
@@ -46,7 +51,7 @@ class SessionModel:
 
     def get_active_event_at_ts(self, ts_ms: int) -> Optional[VLMEvent]:
         """
-        Design Doc §9:
+        Design Doc Â§9:
         Active chunk = the chunk covering the playhead whose start is latest
         (ties broken by score). Overlap regions therefore show the newest window's caption.
         """
@@ -102,3 +107,17 @@ class SessionModel:
             "low_severity_count": low_severity_count,
             "error_count": sum(1 for e in self.events if e.status in ("error", "invalid")),
         }
+    def add_gate_record(self, rec: GateRecord) -> None:
+        """Replace record with matching chunk_id in place, otherwise append."""
+        for i, existing in enumerate(self.gate_records):
+            if existing.chunk_id == rec.chunk_id:
+                self.gate_records[i] = rec
+                return
+        self.gate_records.append(rec)
+
+    def get_gate_by_chunk_id(self, chunk_id: int) -> Optional[GateRecord]:
+        """Return the GateRecord for the given chunk_id, or None."""
+        for r in self.gate_records:
+            if r.chunk_id == chunk_id:
+                return r
+        return None

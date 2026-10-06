@@ -42,9 +42,10 @@ class TestHermesEngineLoading(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        if torch.cuda.is_available():
-            from vlm.hermes_engine import load_hermes_model
-            cls.model, cls.processor = load_hermes_model(MODEL_PATH, kv_size=KV_SIZE)
+        if not torch.cuda.is_available():
+            raise unittest.SkipTest("CUDA GPU required - skipping HermesEngine tests")
+        from vlm.hermes_engine import load_hermes_model
+        cls.model, cls.processor = load_hermes_model(MODEL_PATH, kv_size=KV_SIZE)
 
     @classmethod
     def tearDownClass(cls):

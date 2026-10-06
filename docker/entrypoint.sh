@@ -34,10 +34,16 @@ shift || true   # shift off the command; remaining args passed through
 
 case "$CMD" in
 
-    # Run the benchmark comparison
+    # Run the 3-way benchmark comparison (HERMES vs InfiniPot-V vs JEV+HERMES)
     benchmark)
         echo "[entrypoint] Running compare_latency.py $*"
         exec python /workspace/compare_latency.py "$@"
+        ;;
+
+    # Run JEV hazard probability calibration on video
+    calibrate)
+        echo "[entrypoint] Running calibrate_jev.py $*"
+        exec python /workspace/calibrate_jev.py "$@"
         ;;
 
     # Launch the HERMES desktop UI
@@ -71,8 +77,11 @@ URCA_PROJECTS Docker Container
 Usage: docker run [docker-opts] urca-vlm <COMMAND> [args...]
 
 Commands:
-  benchmark     Run the latency benchmark (compare_latency.py)
+  benchmark     Run the 3-way latency benchmark (InfiniPot-V vs HERMES vs JEV+HERMES)
                 Example: benchmark --video /data/video.mp4 --num-chunks 5
+
+  calibrate     Run JEV hazard probability calibration on a video
+                Example: calibrate --video /data/video.mp4
 
   ui-hermes     Launch the HERMES desktop UI (requires X11 or Xvfb)
                 Example: ui-hermes --model-path /workspace/.hf_cache/hub/...

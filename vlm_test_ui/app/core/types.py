@@ -59,3 +59,48 @@ class VLMEvent:
     verdict: str | None = None            # "correct" | "wrong"
     failure_type: str | None = None       # "FP" | "MISS" | "SCORE" | "HALLUCINATION" | "OTHER"
     note: str = ""
+
+
+# ---------------------------------------------------------------------------
+# JEV gate data types (Phase 1 additions)
+# ---------------------------------------------------------------------------
+
+@dataclass
+class TickRecord:
+    """One JEV evaluation result."""
+    tick_id: int
+    t_ms: int
+    window_start_ms: int
+    num_frames: int
+    status: str                              # "ok" | "error"
+    probs: dict[str, float] | None = None
+    error: str | None = None
+    jev_time_s: float = 0.0
+    thumbs: list[bytes] = field(default_factory=list)
+
+
+@dataclass
+class GateRecord:
+    """Gate routing outcome for one chunk (one per chunk, emitted before VLMEvent)."""
+    chunk_id: int
+    start_ms: int
+    end_ms: int
+    tier: str                                # "FULL" | "REDUCED"
+    reason: str                              # one of the six reasons
+    vec: dict[str, float] | None
+    pmax: float | None
+    rising_hazard: str | None
+    tick_ids: list[int]
+    ticks: list[TickRecord]
+    top_tick_id: int | None
+    num_ticks_ok: int
+    num_ticks_error: int
+    sample_fps: float
+    frames_sent: int
+    frames_full_equiv: int
+    jev_time_s: float
+    vlm_time_s: float | None
+    vlm_status: str | None
+    vlm_score: float | None
+    wall_done_s: float
+    hold_remaining_after: int

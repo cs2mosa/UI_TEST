@@ -121,9 +121,14 @@ RUN pip install --no-cache-dir \
 # 4. Environment variables
 # --------------------------------------------------------------------------- #
 # HuggingFace cache — model weights downloaded here at first run, volume-mounted
+# HuggingFace cache — model weights downloaded here at first run, volume-mounted
 ENV HF_HOME=/workspace/.hf_cache
 ENV TRANSFORMERS_CACHE=/workspace/.hf_cache
 ENV HF_DATASETS_CACHE=/workspace/.hf_cache/datasets
+
+# Default model snapshots (mounted from host HF cache)
+ENV MODEL_PATH=/workspace/.hf_cache/hub/models--Qwen--Qwen3-VL-4B-Instruct/snapshots/ebb281ec70b05090aa6165b016eac8ec08e71b17
+ENV JEV_MODEL_PATH=/workspace/.hf_cache/hub/models--OmniJev--OneJev-0.8B/snapshots/c3939d8bf4cad34549a2b13bbb6aee9bcb6afee8
 
 # Qt / PySide6 — headless via Xvfb started in entrypoint
 ENV QT_QPA_PLATFORM=xcb

@@ -20,6 +20,8 @@ x-common: &common
     - NVIDIA_DRIVER_CAPABILITIES=compute,utility,graphics
     # HuggingFace token for model download (set in your shell: export HF_TOKEN=hf_...)
     - HF_TOKEN=${HF_TOKEN:-}
+    # JEV model snapshot path
+    - JEV_MODEL_PATH=${JEV_MODEL_PATH:-/workspace/.hf_cache/hub/models--OmniJev--OneJev-0.8B/snapshots/c3939d8bf4cad34549a2b13bbb6aee9bcb6afee8}
   volumes:
     # Persist HF model weights between runs — change left side to your desired host path
     - ${HF_CACHE_DIR:-./hf_cache}:/workspace/.hf_cache
@@ -33,7 +35,7 @@ x-common: &common
 services:
 
   # ---------------------------------------------------------------------------
-  # Latency benchmark: HERMES vs InfiniPot-V
+  # Latency benchmark: Three-Way (InfiniPot-V vs HERMES vs JEV+HERMES)
   # ---------------------------------------------------------------------------
   benchmark:
     <<: *common
@@ -46,6 +48,29 @@ services:
       --vlm-fps 4
       --max-dim 448
       --output /results/benchmark_results.json
+
+  # ---------------------------------------------------------------------------
+  # JEV+HERMES gated benchmark worker only (quick single-engine benchmark)
+  # ---------------------------------------------------------------------------
+  benchmark-jev:
+    <<: *common
+    command: >
+      benchmark
+      --mode worker
+      --engine jev_hermes
+      --video /data/video.mp4
+      --num-chunks 5
+      --output /results/jev_hermes_benchmark_telemetry.json
+
+  # ---------------------------------------------------------------------------
+  # JEV Hazard probability calibration on video
+  # ---------------------------------------------------------------------------
+  calibrate-jev:
+    <<: *common
+    command: >
+      calibrate
+      --video /data/video.mp4
+      --output-csv /results/jev_calibration.csv
 
   # ---------------------------------------------------------------------------
   # HERMES desktop UI (headless Xvfb)
