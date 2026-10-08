@@ -274,6 +274,8 @@ def calibrate_neyman_pearson(
             # Neyman-Pearson: alpha-quantile of positive scores
             t_full = max(0.01, quantile(pos, alpha))
             t_watch = max(0.005, min(t_full, quantile(pos, alpha / 2.0)))
+            if t_watch >= t_full:
+                t_watch = max(0.005, round(t_full * 0.75, 4))
             stats[h] = {
                 "n_pos": len(pos),
                 "min": min(pos),
@@ -486,7 +488,8 @@ def print_holdout(selected: dict, holdout_metrics: dict) -> None:
         print(f"    {h}: precision={m['precision']:.3f} recall={m['recall']:.3f} (n_pos={m['n_pos']})")
 
 
-def build_thresholds(run_meta, args, selection, tune, holdout_items, holdout_metrics, null_rows, probe_rows) -> dict:
+def build_thresholds(run_meta, args, selection, tune, holdout_items, holdout_metrics, null_rows, probe_rows,
+                     precision_floor: float = 0.0, watch_precision_floor: float = 0.0) -> dict:
     watch_t, full_t = selection["watch_t"], selection["full_t"]
     per_haz_pos = {h: 0 for h in HAZARDS}
     per_haz_neg = {h: 0 for h in HAZARDS}
@@ -502,8 +505,8 @@ def build_thresholds(run_meta, args, selection, tune, holdout_items, holdout_met
         "hazard_full_thresholds": selection.get("hazard_full_thresholds"),
         "hazard_watch_thresholds": selection.get("hazard_watch_thresholds"),
         "calibration_method": selection.get("method", getattr(args, "mode", "neyman_pearson")),
-        "precision_floor": args.precision_floor,
-        "watch_precision_floor": args.watch_precision_floor,
+        "precision_floor": precision_floor,
+        "watch_precision_floor": watch_precision_floor,
         "target_recall": getattr(args, "target_recall", None),
         "seed": args.seed,
         "prompt_hash": run_meta.get("prompt_hash", ""),
@@ -542,13 +545,18 @@ def main(argv=None) -> int:
                         help="fallback full threshold for unmapped hazards (default: 0.35)")
     parser.add_argument("--default-watch", type=float, default=0.20,
                         help="fallback watch threshold for unmapped hazards (default: 0.20)")
-    parser.add_argument("--precision-floor", type=float, default=0.6)
-    parser.add_argument("--watch-precision-floor", type=float, default=0.4)
+    parser.add_argument("--precision-floor", type=float, default=None,
+                        help="minimum precision floor (default: 0.60 for grid_scan, 0.0 for neyman_pearson)")
+    parser.add_argument("--watch-precision-floor", type=float, default=None,
+                        help="minimum watch precision floor (default: 0.40 for grid_scan, 0.0 for neyman_pearson)")
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--out", default="thresholds.json")
     parser.add_argument("--report-only", default=None, metavar="THRESHOLDS_JSON",
                         help="recompute holdout metrics for an existing thresholds.json")
     args = parser.parse_args(argv)
+
+    precision_floor = args.precision_floor if args.precision_floor is not None else (0.6 if args.mode == "grid_scan" else 0.0)
+    watch_precision_floor = args.watch_precision_floor if args.watch_precision_floor is not None else (0.4 if args.mode == "grid_scan" else 0.0)
 
     try:
         run_meta, items_map, null_rows, probe_rows = load_rows(args.labeled_scores)
@@ -613,9 +621,9 @@ def main(argv=None) -> int:
 
         print_holdout(selected, holdout_metrics)
         m = holdout_metrics["selected"]
-        gates_ok = m["recall"] >= args.target_recall_gate and m["precision"] >= args.precision_floor
+        gates_ok = m["recall"] >= args.target_recall_gate and m["precision"] >= precision_floor
         print(f"[gates] recall {m['recall']:.3f} >= {args.target_recall_gate} and precision {m['precision']:.3f} "
-              f">= {args.precision_floor}: {'PASS' if gates_ok else 'FAIL'}")
+              f">= {precision_floor}: {'PASS' if gates_ok else 'FAIL'}")
         return 0 if gates_ok else 3
 
     if args.mode == "neyman_pearson":
@@ -665,7 +673,7 @@ def main(argv=None) -> int:
             "per_hazard": per_hazard_holdout(full_thrs, holdout),
         }
     else:
-        selection = select_operating_point(tune, args.precision_floor, args.watch_precision_floor)
+        selection = select_operating_point(tune, precision_floor, watch_precision_floor)
         print_scan("tune", selection["table"])
         if selection["full_t"] is None:
             print("FAILED-TO-ADOPT (precision floor unreachable)", file=sys.stderr)
@@ -682,13 +690,13 @@ def main(argv=None) -> int:
     print_holdout(selected, holdout_metrics)
 
     sel_m = holdout_metrics["selected"]
-    gates_ok = sel_m["recall"] >= args.target_recall_gate and sel_m["precision"] >= args.precision_floor
+    gates_ok = sel_m["recall"] >= args.target_recall_gate and sel_m["precision"] >= precision_floor
     print(f"[gates] recall {sel_m['recall']:.3f} >= {args.target_recall_gate} and precision "
-          f"{sel_m['precision']:.3f} >= {args.precision_floor}: {'PASS' if gates_ok else 'FAIL'}")
+          f"{sel_m['precision']:.3f} >= {precision_floor}: {'PASS' if gates_ok else 'FAIL'}")
 
     for name, lw, fw in LEGACY_POINTS:
         lm = holdout_metrics[name]
-        if (lm["recall"] >= args.target_recall_gate and lm["precision"] >= args.precision_floor
+        if (lm["recall"] >= args.target_recall_gate and lm["precision"] >= precision_floor
                 and lm["f1"] > sel_m["f1"]):
             print(f"ADVISORY: legacy point dominates selected ({name} f1={lm['f1']:.3f} > selected f1={sel_m['f1']:.3f}) - developer decides")
 
@@ -704,7 +712,8 @@ def main(argv=None) -> int:
         print("FAILED-TO-ADOPT (adoption gates failed); thresholds.json NOT written", file=sys.stderr)
         return 3
 
-    doc = build_thresholds(run_meta, args, selection, tune, holdout, holdout_metrics, null_rows, probe_rows)
+    doc = build_thresholds(run_meta, args, selection, tune, holdout, holdout_metrics, null_rows, probe_rows,
+                           precision_floor=precision_floor, watch_precision_floor=watch_precision_floor)
     with open(args.out, "w", encoding="utf-8") as f:
         json.dump(doc, f, indent=2)
     print(f"[+] thresholds written: {args.out}")

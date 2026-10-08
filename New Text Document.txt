@@ -61,3 +61,10 @@ docker run --rm --gpus all \
     --video /workspace/procimity_placement_combined.mp4 \
     --gate-config-json /workspace/thresholds.json
 
+
+python3 vlm_test_ui/scripts/calibrate_report.py /workspace/labeled_scores.jsonl \
+  --mode neyman_pearson \
+  --target-recall 0.97 \
+  --precision-floor 0.0 \
+  --out /workspace/thresholds.json
+
