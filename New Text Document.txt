@@ -1,4 +1,4 @@
-docker run --rm \
+ocker run --rm \
   -v $(pwd):/workspace \
   urca-vlm:latest python3 -c "
 from huggingface_hub import snapshot_download
