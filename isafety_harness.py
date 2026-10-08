@@ -71,6 +71,45 @@ def compute_prompt_hash() -> str:
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
+def ensure_model_path(model_path: str, repo_id: str = "OmniJev/OneJev-0.8B") -> str:
+    """Ensures model snapshot exists locally; finds existing snapshot or downloads it automatically."""
+    if os.path.isdir(model_path) and any(os.scandir(model_path)):
+        return model_path
+
+    # Check if any snapshot directory exists under the model's repo cache
+    for parent in [
+        os.path.dirname(model_path),
+        os.path.join(BASE_DIR, ".hf_cache", "hub", "models--OmniJev--OneJev-0.8B", "snapshots"),
+        os.path.join(os.environ.get("HF_HOME", ""), "hub", "models--OmniJev--OneJev-0.8B", "snapshots"),
+    ]:
+        if parent and os.path.isdir(parent):
+            matches = [os.path.join(parent, d) for d in os.listdir(parent) if os.path.isdir(os.path.join(parent, d))]
+            for m in matches:
+                if any(os.scandir(m)):
+                    print(f"[*] Found existing OneJev snapshot at: {m}", flush=True)
+                    return m
+
+    print(f"[*] Local OneJev model not found at: {model_path}", flush=True)
+    print(f"[*] Downloading '{repo_id}' via huggingface_hub...", flush=True)
+    try:
+        from huggingface_hub import snapshot_download
+    except ImportError:
+        print("[!] huggingface_hub not installed, cannot download model automatically.", flush=True)
+        return model_path
+
+    hf_cache = os.environ.get("HF_HOME") or os.environ.get("HUGGINGFACE_HUB_CACHE")
+    if not hf_cache:
+        hf_cache = os.path.join(BASE_DIR, ".hf_cache")
+
+    os.makedirs(hf_cache, exist_ok=True)
+    downloaded_dir = snapshot_download(
+        repo_id=repo_id,
+        cache_dir=hf_cache,
+    )
+    print(f"[+] OneJev model ready at: {downloaded_dir}", flush=True)
+    return downloaded_dir
+
+
 # ---------------------------------------------------------------------------
 # Slot-logit capture (PROBE-1)
 # ---------------------------------------------------------------------------
@@ -287,6 +326,7 @@ def main(argv=None) -> int:
           + (" + null-input" if args.null_input else "")
           + (", order-probe on" if args.order == "both" else ""))
 
+    args.model_path = ensure_model_path(args.model_path, repo_id="OmniJev/OneJev-0.8B")
     decider = OneJevDecider(args.model_path)
     decider.mode = args.decider_mode
     print(f"[*] OneJev loaded; head_dtype={decider.head_dtype}; decider_mode={decider.mode}")
