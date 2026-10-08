@@ -359,5 +359,60 @@ class TestRoute2Logx(unittest.TestCase):
             shutil.rmtree(log_dir, ignore_errors=True)
 
 
+class TestPerHazardRouting(unittest.TestCase):
+    def test_per_hazard_full_triggers(self):
+        cfg = GateConfig(
+            route_full_threshold=0.90,
+            route_watch_threshold=0.80,
+            hazard_full_thresholds={"pedestrian_vehicle": 0.40, "no_ppe": 0.70},
+        )
+        r = GateRouter(cfg)
+        probs = _flat(0.10)
+        probs["pedestrian_vehicle"] = 0.45
+        d = r.decide([_ok_tick(0, 3000, probs)])
+        self.assertEqual(d.tier, TIER_FULL)
+        self.assertEqual(d.reason, REASON_ABOVE_FULL)
+
+    def test_per_hazard_watch_triggers(self):
+        cfg = GateConfig(
+            route_full_threshold=0.90,
+            route_watch_threshold=0.80,
+            hazard_full_thresholds={"pedestrian_vehicle": 0.50},
+            hazard_watch_thresholds={"pedestrian_vehicle": 0.25},
+        )
+        r = GateRouter(cfg)
+        probs = _flat(0.10)
+        probs["pedestrian_vehicle"] = 0.30
+        d = r.decide([_ok_tick(0, 3000, probs)])
+        self.assertEqual(d.tier, TIER_FULL)
+        self.assertEqual(d.reason, REASON_ABOVE_WATCH)
+
+    def test_per_hazard_remains_clear_when_under_threshold(self):
+        cfg = GateConfig(
+            route_full_threshold=0.90,
+            route_watch_threshold=0.80,
+            hazard_full_thresholds={"pedestrian_vehicle": 0.50},
+            hazard_watch_thresholds={"pedestrian_vehicle": 0.40},
+        )
+        r = GateRouter(cfg)
+        probs = _flat(0.10)
+        probs["pedestrian_vehicle"] = 0.35  # below watch
+        d = r.decide([_ok_tick(0, 3000, probs)])
+        self.assertEqual(d.tier, TIER_REDUCED)
+        self.assertEqual(d.reason, REASON_CLEAR)
+
+    def test_per_hazard_validation_errors(self):
+        with self.assertRaises(ValueError):
+            GateConfig(hazard_full_thresholds={"bad_hazard_name": 0.5})
+        with self.assertRaises(ValueError):
+            GateConfig(hazard_full_thresholds={"no_ppe": 1.5})
+        with self.assertRaises(ValueError):
+            GateConfig(
+                hazard_full_thresholds={"no_ppe": 0.30},
+                hazard_watch_thresholds={"no_ppe": 0.40},  # watch > full
+            )
+
+
 if __name__ == "__main__":
     unittest.main()
+

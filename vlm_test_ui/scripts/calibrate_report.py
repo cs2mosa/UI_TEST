@@ -236,6 +236,93 @@ def f1(precision: float, recall: float) -> float:
     return 2.0 * precision * recall / (precision + recall) if (precision + recall) > 0 else 0.0
 
 
+def quantile(values: list[float], q: float) -> float:
+    """Computes empirical quantile q in [0, 1] for values."""
+    if not values:
+        return 0.0
+    s = sorted(values)
+    idx = max(0, min(len(s) - 1, int(math.floor(round(q * len(s), 9)))))
+    return s[idx]
+
+
+def calibrate_neyman_pearson(
+    items: list[dict],
+    target_recall: float = 0.97,
+    default_full: float = 0.35,
+    default_watch: float = 0.20,
+) -> dict:
+    """
+    Computes per-hazard full and watch thresholds using the Neyman-Pearson criterion:
+    For hazard h, threshold is set to the (1.0 - target_recall) quantile of positive scores.
+    Watch threshold is set to the (1.0 - target_recall)/2 quantile (higher recall).
+    If a hazard has no positive instances (e.g. no_ppe in iSafetyBench), falls back to defaults.
+    """
+    hazard_scores: dict[str, list[float]] = {h: [] for h in HAZARDS}
+    for it in items:
+        for r in it["rows"]:
+            if r["hazard"] in HAZARDS and r["label"] == "pos":
+                hazard_scores[r["hazard"]].append(float(r["p_yes"]))
+
+    full_thrs: dict[str, float] = {}
+    watch_thrs: dict[str, float] = {}
+    stats: dict[str, dict] = {}
+
+    alpha = max(0.0, 1.0 - target_recall)
+    for h in HAZARDS:
+        pos = hazard_scores[h]
+        if pos:
+            # Neyman-Pearson: alpha-quantile of positive scores
+            t_full = max(0.01, quantile(pos, alpha))
+            t_watch = max(0.005, min(t_full, quantile(pos, alpha / 2.0)))
+            stats[h] = {
+                "n_pos": len(pos),
+                "min": min(pos),
+                "max": max(pos),
+                "mean": sum(pos) / len(pos),
+                "status": "calibrated",
+            }
+        else:
+            t_full = default_full
+            t_watch = default_watch
+            stats[h] = {
+                "n_pos": 0,
+                "status": "defaulted_no_data",
+            }
+        full_thrs[h] = round(t_full, 4)
+        watch_thrs[h] = round(t_watch, 4)
+
+    return {
+        "hazard_full_thresholds": full_thrs,
+        "hazard_watch_thresholds": watch_thrs,
+        "hazard_stats": stats,
+        "overall_full_threshold": min(full_thrs.values()),
+        "overall_watch_threshold": min(watch_thrs.values()),
+        "target_recall": target_recall,
+    }
+
+
+def per_hazard_routing_counts(hazard_thrs: dict[str, float], items: list[dict]) -> dict:
+    tp = fp = fn = tn = 0
+    for it in items:
+        routed = any(
+            float(r["p_yes"]) >= hazard_thrs.get(r["hazard"], 1.0)
+            for r in it["rows"]
+            if r["hazard"] in hazard_thrs
+        )
+        haz = item_hazardous(it)
+        if routed and haz:
+            tp += 1
+        elif routed and not haz:
+            fp += 1
+        elif not routed and haz:
+            fn += 1
+        else:
+            tn += 1
+    precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0
+    recall = tp / (tp + fn) if (tp + fn) > 0 else 1.0
+    return {"tp": tp, "fp": fp, "fn": fn, "tn": tn, "precision": precision, "recall": recall}
+
+
 # ---------------------------------------------------------------------------
 # Diagnostics (§5.4 step 3)
 # ---------------------------------------------------------------------------
@@ -282,19 +369,21 @@ def point_metrics(watch_t: float, items: list[dict]) -> dict:
     }
 
 
-def per_hazard_holdout(threshold: float, items: list[dict]) -> dict:
+def per_hazard_holdout(threshold_or_dict: float | dict[str, float], items: list[dict]) -> dict:
     out = {}
     for h in HAZARDS:
+        thr = threshold_or_dict[h] if isinstance(threshold_or_dict, dict) else threshold_or_dict
         sub = []
         for it in items:
             scores = [float(r["p_yes"]) for r in it["rows"] if r["hazard"] == h]
             if not scores:
                 continue
             sub.append({"p": max(scores), "pos": any(r["hazard"] == h and r["label"] == "pos" for r in it["rows"])})
-        tp = sum(1 for x in sub if x["p"] >= threshold and x["pos"])
-        fp = sum(1 for x in sub if x["p"] >= threshold and not x["pos"])
-        fn = sum(1 for x in sub if x["p"] < threshold and x["pos"])
+        tp = sum(1 for x in sub if x["p"] >= thr and x["pos"])
+        fp = sum(1 for x in sub if x["p"] >= thr and not x["pos"])
+        fn = sum(1 for x in sub if x["p"] < thr and x["pos"])
         out[h] = {
+            "threshold": round(thr, 4),
             "precision": tp / (tp + fp) if (tp + fp) > 0 else 0.0,
             "recall": tp / (tp + fn) if (tp + fn) > 0 else 1.0,
             "n_pos": sum(1 for x in sub if x["pos"]),
@@ -410,8 +499,12 @@ def build_thresholds(run_meta, args, selection, tune, holdout_items, holdout_met
     return {
         "route_watch_threshold": watch_t,
         "route_full_threshold": full_t,
+        "hazard_full_thresholds": selection.get("hazard_full_thresholds"),
+        "hazard_watch_thresholds": selection.get("hazard_watch_thresholds"),
+        "calibration_method": selection.get("method", getattr(args, "mode", "neyman_pearson")),
         "precision_floor": args.precision_floor,
         "watch_precision_floor": args.watch_precision_floor,
+        "target_recall": getattr(args, "target_recall", None),
         "seed": args.seed,
         "prompt_hash": run_meta.get("prompt_hash", ""),
         "dataset_fingerprint": {
@@ -426,6 +519,7 @@ def build_thresholds(run_meta, args, selection, tune, holdout_items, holdout_met
             "tune_stats": {
                 "candidates": selection["table"],
                 "degenerate_watch": selection["degenerate_watch"],
+                "hazard_stats": selection.get("hazard_stats", {}),
             },
         },
         "holdout": holdout_metrics,
@@ -438,6 +532,16 @@ def build_thresholds(run_meta, args, selection, tune, holdout_items, holdout_met
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description="JEV threshold selection report (design_v3 §5.4)")
     parser.add_argument("labeled_scores", help="labeled_scores.jsonl (Appendix C)")
+    parser.add_argument("--mode", choices=["neyman_pearson", "grid_scan"], default="neyman_pearson",
+                        help="calibration algorithm (default: neyman_pearson)")
+    parser.add_argument("--target-recall", type=float, default=0.97,
+                        help="target recall for Neyman-Pearson calibration (default: 0.97)")
+    parser.add_argument("--target-recall-gate", type=float, default=0.95,
+                        help="minimum holdout recall adoption gate (default: 0.95)")
+    parser.add_argument("--default-full", type=float, default=0.35,
+                        help="fallback full threshold for unmapped hazards (default: 0.35)")
+    parser.add_argument("--default-watch", type=float, default=0.20,
+                        help="fallback watch threshold for unmapped hazards (default: 0.20)")
     parser.add_argument("--precision-floor", type=float, default=0.6)
     parser.add_argument("--watch-precision-floor", type=float, default=0.4)
     parser.add_argument("--seed", type=int, default=42)
@@ -477,42 +581,114 @@ def main(argv=None) -> int:
         except (OSError, json.JSONDecodeError) as exc:
             print(f"SCHEMA ERROR: cannot read {args.report_only}: {exc}", file=sys.stderr)
             return 2
-        watch_t = saved["route_watch_threshold"]
-        full_t = saved["route_full_threshold"]
-        selected = {"watch_t": watch_t, "full_t": full_t, "per_hazard": per_hazard_holdout(full_t, holdout)}
-        holdout_metrics = {name: point_metrics(w if name == "selected" else fw, holdout)
-                           for name, (w, fw) in
-                           [("selected", (watch_t, full_t))] + [(n, (lw, lf)) for n, lw, lf in LEGACY_POINTS]}
+        watch_t = saved.get("route_watch_threshold", 0.20)
+        full_t = saved.get("route_full_threshold", 0.35)
+        saved_haz_full = saved.get("hazard_full_thresholds")
+        saved_haz_watch = saved.get("hazard_watch_thresholds")
+
+        target_full = saved_haz_full if saved_haz_full else full_t
+
+        selected = {
+            "watch_t": watch_t,
+            "full_t": full_t,
+            "hazard_full_thresholds": saved_haz_full,
+            "hazard_watch_thresholds": saved_haz_watch,
+            "per_hazard": per_hazard_holdout(target_full, holdout),
+        }
+        if saved_haz_watch:
+            sel_point_m = per_hazard_routing_counts(saved_haz_watch, holdout)
+            sel_entry = {
+                "precision": sel_point_m["precision"],
+                "recall": sel_point_m["recall"],
+                "f1": f1(sel_point_m["precision"], sel_point_m["recall"]),
+                "tp": sel_point_m["tp"], "fp": sel_point_m["fp"],
+                "fn": sel_point_m["fn"], "tn": sel_point_m["tn"],
+            }
+        else:
+            sel_entry = point_metrics(watch_t, holdout)
+
+        holdout_metrics = {"selected": sel_entry}
+        for n, lw, lf in LEGACY_POINTS:
+            holdout_metrics[n] = point_metrics(lw, holdout)
+
         print_holdout(selected, holdout_metrics)
         m = holdout_metrics["selected"]
-        gates_ok = m["recall"] >= RECALL_GATE and m["precision"] >= args.precision_floor
-        print(f"[gates] recall {m['recall']:.3f} >= {RECALL_GATE} and precision {m['precision']:.3f} "
+        gates_ok = m["recall"] >= args.target_recall_gate and m["precision"] >= args.precision_floor
+        print(f"[gates] recall {m['recall']:.3f} >= {args.target_recall_gate} and precision {m['precision']:.3f} "
               f">= {args.precision_floor}: {'PASS' if gates_ok else 'FAIL'}")
         return 0 if gates_ok else 3
 
-    selection = select_operating_point(tune, args.precision_floor, args.watch_precision_floor)
-    print_scan("tune", selection["table"])
-    if selection["full_t"] is None:
-        print("FAILED-TO-ADOPT (precision floor unreachable)", file=sys.stderr)
-        return 3
-    if selection["degenerate_watch"]:
-        print("[flag] degenerate_watch: no candidate meets the watch floor below the full threshold; watch := full")
-    print(f"[*] selected operating point: watch={selection['watch_t']:.6f} full={selection['full_t']:.6f}")
+    if args.mode == "neyman_pearson":
+        np_res = calibrate_neyman_pearson(
+            tune,
+            target_recall=args.target_recall,
+            default_full=args.default_full,
+            default_watch=args.default_watch,
+        )
+        full_thrs = np_res["hazard_full_thresholds"]
+        watch_thrs = np_res["hazard_watch_thresholds"]
+        full_t = np_res["overall_full_threshold"]
+        watch_t = np_res["overall_watch_threshold"]
 
-    holdout_metrics = {name: point_metrics(w, holdout) for name, _f, w in
-                       [("selected", 0.0, selection["watch_t"])] + [(n, fw, lw) for n, lw, fw in LEGACY_POINTS]}
-    selected = {"watch_t": selection["watch_t"], "full_t": selection["full_t"],
-                "per_hazard": per_hazard_holdout(selection["full_t"], holdout)}
+        selection = {
+            "method": "neyman_pearson",
+            "table": scan_table(tune),
+            "full_t": full_t,
+            "watch_t": watch_t,
+            "hazard_full_thresholds": full_thrs,
+            "hazard_watch_thresholds": watch_thrs,
+            "hazard_stats": np_res["hazard_stats"],
+            "degenerate_watch": False,
+        }
+        print(f"\n[neyman-pearson per-hazard calibration] target_recall={args.target_recall:.3f}")
+        for h in HAZARDS:
+            st = np_res["hazard_stats"][h]
+            print(f"  {h:<24} full={full_thrs[h]:.4f} watch={watch_thrs[h]:.4f} ({st['status']})")
+        print(f"[*] overall fallback bounds: watch={watch_t:.4f} full={full_t:.4f}")
+
+        sel_counts = per_hazard_routing_counts(watch_thrs, holdout)
+        sel_m = {
+            "precision": sel_counts["precision"],
+            "recall": sel_counts["recall"],
+            "f1": f1(sel_counts["precision"], sel_counts["recall"]),
+            "tp": sel_counts["tp"], "fp": sel_counts["fp"],
+            "fn": sel_counts["fn"], "tn": sel_counts["tn"],
+        }
+        holdout_metrics = {"selected": sel_m}
+        for n, lw, fw in LEGACY_POINTS:
+            holdout_metrics[n] = point_metrics(lw, holdout)
+        selected = {
+            "watch_t": watch_t,
+            "full_t": full_t,
+            "hazard_full_thresholds": full_thrs,
+            "hazard_watch_thresholds": watch_thrs,
+            "per_hazard": per_hazard_holdout(full_thrs, holdout),
+        }
+    else:
+        selection = select_operating_point(tune, args.precision_floor, args.watch_precision_floor)
+        print_scan("tune", selection["table"])
+        if selection["full_t"] is None:
+            print("FAILED-TO-ADOPT (precision floor unreachable)", file=sys.stderr)
+            return 3
+        if selection["degenerate_watch"]:
+            print("[flag] degenerate_watch: no candidate meets the watch floor below the full threshold; watch := full")
+        print(f"[*] selected operating point: watch={selection['watch_t']:.6f} full={selection['full_t']:.6f}")
+
+        holdout_metrics = {name: point_metrics(w, holdout) for name, _f, w in
+                           [("selected", 0.0, selection["watch_t"])] + [(n, fw, lw) for n, lw, fw in LEGACY_POINTS]}
+        selected = {"watch_t": selection["watch_t"], "full_t": selection["full_t"],
+                    "per_hazard": per_hazard_holdout(selection["full_t"], holdout)}
+
     print_holdout(selected, holdout_metrics)
 
     sel_m = holdout_metrics["selected"]
-    gates_ok = sel_m["recall"] >= RECALL_GATE and sel_m["precision"] >= args.precision_floor
-    print(f"[gates] recall {sel_m['recall']:.3f} >= {RECALL_GATE} and precision "
+    gates_ok = sel_m["recall"] >= args.target_recall_gate and sel_m["precision"] >= args.precision_floor
+    print(f"[gates] recall {sel_m['recall']:.3f} >= {args.target_recall_gate} and precision "
           f"{sel_m['precision']:.3f} >= {args.precision_floor}: {'PASS' if gates_ok else 'FAIL'}")
 
     for name, lw, fw in LEGACY_POINTS:
         lm = holdout_metrics[name]
-        if (lm["recall"] >= RECALL_GATE and lm["precision"] >= args.precision_floor
+        if (lm["recall"] >= args.target_recall_gate and lm["precision"] >= args.precision_floor
                 and lm["f1"] > sel_m["f1"]):
             print(f"ADVISORY: legacy point dominates selected ({name} f1={lm['f1']:.3f} > selected f1={sel_m['f1']:.3f}) - developer decides")
 

@@ -256,5 +256,51 @@ class TestGateConfigPlumbing(unittest.TestCase):
                 cl.build_gate_config(path, None, None)
 
 
+class TestNeymanPearsonCalibration(unittest.TestCase):
+    def test_quantile_computation(self):
+        vals = [0.10, 0.20, 0.30, 0.40, 0.50]
+        self.assertAlmostEqual(cr.quantile(vals, 0.0), 0.10, places=9)
+        self.assertAlmostEqual(cr.quantile(vals, 0.5), 0.30, places=9)
+        self.assertAlmostEqual(cr.quantile(vals, 1.0), 0.50, places=9)
+        self.assertAlmostEqual(cr.quantile([], 0.5), 0.0, places=9)
+
+    def test_calibrate_neyman_pearson_toy(self):
+        items = [
+            {"item_id": f"item_{i}", "rows": [
+                {"hazard": "pedestrian_vehicle", "p_yes": p, "label": "pos"},
+                {"hazard": "no_ppe", "p_yes": 0.05, "label": "neg"},
+            ]}
+            for i, p in enumerate([0.30, 0.40, 0.50, 0.60, 0.70])
+        ]
+        res = cr.calibrate_neyman_pearson(items, target_recall=0.80, default_full=0.35, default_watch=0.20)
+        self.assertIn("hazard_full_thresholds", res)
+        self.assertIn("hazard_watch_thresholds", res)
+        # alpha = 0.20 -> floor(0.2 * 5) = 1 -> vals[1] = 0.40
+        self.assertAlmostEqual(res["hazard_full_thresholds"]["pedestrian_vehicle"], 0.40, places=4)
+        # no_ppe has no pos -> defaults
+        self.assertEqual(res["hazard_full_thresholds"]["no_ppe"], 0.35)
+        self.assertEqual(res["hazard_watch_thresholds"]["no_ppe"], 0.20)
+        self.assertEqual(res["hazard_stats"]["no_ppe"]["status"], "defaulted_no_data")
+
+    def test_per_hazard_routing_counts(self):
+        items = [
+            {"item_id": "item_pos", "rows": [
+                {"hazard": "pedestrian_vehicle", "p_yes": 0.45, "label": "pos"},
+                {"hazard": "no_ppe", "p_yes": 0.10, "label": "neg"},
+            ]},
+            {"item_id": "item_neg", "rows": [
+                {"hazard": "pedestrian_vehicle", "p_yes": 0.15, "label": "neg"},
+                {"hazard": "no_ppe", "p_yes": 0.10, "label": "neg"},
+            ]},
+        ]
+        thrs = {"pedestrian_vehicle": 0.40, "no_ppe": 0.50}
+        counts = cr.per_hazard_routing_counts(thrs, items)
+        self.assertEqual(counts["tp"], 1)
+        self.assertEqual(counts["fp"], 0)
+        self.assertEqual(counts["recall"], 1.0)
+        self.assertEqual(counts["precision"], 1.0)
+
+
 if __name__ == "__main__":
     unittest.main()
+

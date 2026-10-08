@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 """
 jev_gate.py - Pure JEV gate logic: tick schedule, routing, helpers.
 
@@ -55,6 +55,8 @@ class GateConfig:
     route_min_consecutive_watch: int = 0              # 0 or 1 = fire immediately (v2 behaviour)
     ewma_alpha: float | None = None                   # None = EWMA off
     prompt_hash: str = ""                             # Phase C; flows into GateLog via to_dict()
+    hazard_full_thresholds: dict[str, float] | None = None
+    hazard_watch_thresholds: dict[str, float] | None = None
 
     def __post_init__(self) -> None:
         if self.jev_window_s <= 0:
@@ -88,10 +90,37 @@ class GateConfig:
             raise ValueError("route_min_consecutive_watch must be a non-negative int")
         if self.ewma_alpha is not None and not (0 < self.ewma_alpha <= 1):
             raise ValueError("ewma_alpha must be in (0, 1] when set")
+        if self.hazard_full_thresholds is not None:
+            for h, val in self.hazard_full_thresholds.items():
+                if h not in HAZARDS:
+                    raise ValueError(f"unknown hazard in hazard_full_thresholds: {h}")
+                if not (0 < val <= 1):
+                    raise ValueError(f"hazard_full_thresholds[{h}] must be in (0, 1]")
+        if self.hazard_watch_thresholds is not None:
+            for h, val in self.hazard_watch_thresholds.items():
+                if h not in HAZARDS:
+                    raise ValueError(f"unknown hazard in hazard_watch_thresholds: {h}")
+                if not (0 < val <= 1):
+                    raise ValueError(f"hazard_watch_thresholds[{h}] must be in (0, 1]")
+                full_val = self.get_full_threshold(h)
+                if val > full_val:
+                    raise ValueError(
+                        f"hazard_watch_thresholds[{h}] ({val}) must be <= full threshold ({full_val})"
+                    )
         if self.window_ms < 1:
             raise ValueError("window_ms must be >= 1")
         if self.stride_ms < 1:
             raise ValueError("stride_ms must be >= 1")
+
+    def get_full_threshold(self, hazard: str) -> float:
+        if self.hazard_full_thresholds and hazard in self.hazard_full_thresholds:
+            return float(self.hazard_full_thresholds[hazard])
+        return self.route_full_threshold
+
+    def get_watch_threshold(self, hazard: str) -> float:
+        if self.hazard_watch_thresholds and hazard in self.hazard_watch_thresholds:
+            return float(self.hazard_watch_thresholds[hazard])
+        return self.route_watch_threshold
 
     @property
     def window_ms(self) -> int:
@@ -231,10 +260,11 @@ class GateRouter:
             for h in HAZARDS
         }
         pmax = max(vec.values())
-        watch_now = ge(pmax, cfg.route_watch_threshold)
+        full_now = any(ge(vec[h], cfg.get_full_threshold(h)) for h in HAZARDS)
+        watch_now = any(ge(vec[h], cfg.get_watch_threshold(h)) for h in HAZARDS)
 
         # Rule 2: above_full
-        if ge(pmax, cfg.route_full_threshold):
+        if full_now:
             self.hold_remaining = cfg.route_hold_chunks
             self.prev_vec = dict(vec)
             self.elevated = True

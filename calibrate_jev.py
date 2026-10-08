@@ -39,6 +39,7 @@ def parse_args():
     parser.add_argument("--overlap-s", type=float, default=1.0, help="Chunk overlap in seconds (default: 1.0)")
     parser.add_argument("--max-chunks", type=int, default=None, help="Optional limit on number of chunks to scan")
     parser.add_argument("--output-csv", type=str, default="jev_calibration_log.csv", help="CSV export filename")
+    parser.add_argument("--gate-config-json", type=str, default=None, help="Path to calibrated thresholds.json")
     return parser.parse_args()
 
 
@@ -160,6 +161,54 @@ def main():
     for t_ms, h_name, score, p_dict in scored_ticks[:10]:
         scores_str = ", ".join([f"{k[:4]}:{v:.2f}" for k, v in p_dict.items()])
         print(f"{t_ms/1000:<12.1f} {h_name:<32} {score:<8.3f} [{scores_str}]")
+
+    if args.gate_config_json:
+        import json as _json
+        import dataclasses as _dc
+        print("\n" + "=" * 80)
+        print(f"[2b] CALIBRATED CONFIG SIMULATION ({args.gate_config_json})")
+        print("=" * 80)
+        try:
+            with open(args.gate_config_json, "r", encoding="utf-8") as f:
+                cfg_dict = _json.load(f)
+            valid_keys = {fld.name for fld in _dc.fields(GateConfig)}
+            filtered_cfg = {k: v for k, v in cfg_dict.items() if k in valid_keys}
+            cal_cfg = GateConfig(**filtered_cfg)
+            cal_router = GateRouter(cal_cfg)
+            cal_tier_counts = {TIER_FULL: 0, TIER_REDUCED: 0}
+            cal_total_sent = 0
+            cal_total_equiv = 0
+            cal_chunk_log = []
+
+            for idx, (w_start, w_end) in enumerate(windows):
+                chunk_ticks = [tick_results[t_idx] for t_idx in assigned[idx]] if idx < len(assigned) else []
+                dec = cal_router.decide(chunk_ticks)
+                cal_tier_counts[dec.tier] += 1
+                equiv_frames = int(round(args.chunk_s * 4.0))
+                sent_frames = int(round(args.chunk_s * (1.0 if dec.tier == TIER_REDUCED else 4.0)))
+                cal_total_sent += sent_frames
+                cal_total_equiv += equiv_frames
+                cal_chunk_log.append((idx, w_start, w_end, dec.tier, dec.reason, dec.pmax))
+
+            tot_chunks = len(windows)
+            clear_pct = (cal_tier_counts[TIER_REDUCED] / tot_chunks) * 100.0 if tot_chunks else 0
+            full_pct = (cal_tier_counts[TIER_FULL] / tot_chunks) * 100.0 if tot_chunks else 0
+            saved_pct = ((cal_total_equiv - cal_total_sent) / cal_total_equiv) * 100.0 if cal_total_equiv else 0
+
+            print(f"Total Chunks:   {tot_chunks}")
+            print(f"REDUCED Chunks: {cal_tier_counts[TIER_REDUCED]} ({clear_pct:.1f}%)")
+            print(f"FULL Chunks:    {cal_tier_counts[TIER_FULL]} ({full_pct:.1f}%)")
+            print(f"Frame Savings:  {saved_pct:.1f}% ({cal_total_equiv - cal_total_sent}/{cal_total_equiv} frames saved)")
+            if cal_cfg.hazard_full_thresholds:
+                print("Per-Hazard Full Thresholds:")
+                for h in HAZARDS:
+                    print(f"  {h:<24}: full={cal_cfg.get_full_threshold(h):.4f} watch={cal_cfg.get_watch_threshold(h):.4f}")
+            print("\nTriggered Chunks:")
+            for idx, w_start, w_end, tier, reason, pmax in cal_chunk_log:
+                if tier == TIER_FULL:
+                    print(f"  Chunk {idx+1} [{w_start/1000:.1f}s - {w_end/1000:.1f}s]: {tier} ({reason}, pmax={pmax:.3f})")
+        except Exception as e:
+            print(f"[!] Error simulating calibrated config: {e}")
 
     # 3. Threshold Calibration Sweep Simulation
     print("\n" + "=" * 80)
