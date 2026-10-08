@@ -32,7 +32,7 @@ def load(path):
 def partition(rows):
     headers, ticks, chunks = [], [], []
     for r in rows:
-        k = r.get("kind")
+        k = r.get("type")
         if k in ("run_start", "run_end"):
             headers.append(r)
         elif k == "tick":
@@ -45,12 +45,12 @@ def partition(rows):
 
 
 def report_header(headers, ticks, chunks):
-    start = next((h for h in headers if h.get("kind") == "run_start"), {})
-    end   = next((h for h in headers if h.get("kind") == "run_end"),   {})
-    print("media:    ", start.get("media_path", "?"))
-    print("decider:  ", start.get("decider_label", "?"))
-    print("started:  ", start.get("ts", "?"))
-    print("ended:    ", end.get("ts", "?"))
+    start = next((h for h in headers if h.get("type") == "run_start"), {})
+    end   = next((h for h in headers if h.get("type") == "run_end"),   {})
+    print("media:    ", start.get("media", "?"))
+    print("decider:  ", start.get("decider", "?"))
+    print("started:  ", start.get("time", "?"))
+    print("ended:    ", end.get("time", "?"))
     print("ticks:    ", len(ticks))
     print("chunks:   ", len(chunks))
 
@@ -110,31 +110,39 @@ def check3_overhead(chunks):
         print(f"  net saving (est_saved - jev): {est_saved - jev:.2f}s")
 
 
-def check4_window_correctness(ticks):
+def check4_window_correctness(ticks, route_full_threshold=None, route_watch_threshold=None):
     print("\n[4] Window correctness (DEMO_RULES pseudo-GT)")
     if not ticks:
         print("  (no tick records)")
         return
+    if route_full_threshold is None or route_watch_threshold is None:
+        missing = [name for name, v in
+                   (("route_full_threshold", route_full_threshold),
+                    ("route_watch_threshold", route_watch_threshold)) if v is None]
+        print(f"  WARNING: run_start.gate_config lacks {missing}; falling back to the "
+              f"hard-coded constants (pre-adoption behaviour)")
+        route_full_threshold = ROUTE_FULL_THRESHOLD
+        route_watch_threshold = ROUTE_WATCH_THRESHOLD
     full_total, full_ok   = 0, 0
     watch_total, watch_ok = 0, 0
     fails = []
     for t in ticks:
         t_ms  = t.get("t_ms", -1)
-        no_ppe = (t.get("vec") or {}).get("no_ppe", 0.0)
+        no_ppe = (t.get("probs") or {}).get("no_ppe", 0.0)  # deviating fix: tick records carry "probs" (§5.6), never "vec"
         if 10000 <= t_ms <= 12000:
             full_total += 1
-            if no_ppe >= ROUTE_FULL_THRESHOLD:
+            if no_ppe >= route_full_threshold:
                 full_ok += 1
             else:
-                fails.append(f"  FAIL t={t_ms}ms no_ppe={no_ppe:.3f} < {ROUTE_FULL_THRESHOLD} (full window)")
+                fails.append(f"  FAIL t={t_ms}ms no_ppe={no_ppe:.3f} < {route_full_threshold} (full window)")
         if 5500 <= t_ms <= 8000:
             watch_total += 1
-            if no_ppe >= ROUTE_WATCH_THRESHOLD:
+            if no_ppe >= route_watch_threshold:
                 watch_ok += 1
             else:
-                fails.append(f"  FAIL t={t_ms}ms no_ppe={no_ppe:.3f} < {ROUTE_WATCH_THRESHOLD} (watch window)")
-    print(f"  full-window  [10000-12000ms]: {full_ok}/{full_total} ticks have no_ppe >= {ROUTE_FULL_THRESHOLD}")
-    print(f"  watch-window [ 5500- 8000ms]: {watch_ok}/{watch_total} ticks have no_ppe >= {ROUTE_WATCH_THRESHOLD}")
+                fails.append(f"  FAIL t={t_ms}ms no_ppe={no_ppe:.3f} < {route_watch_threshold} (watch window)")
+    print(f"  full-window  [10000-12000ms]: {full_ok}/{full_total} ticks have no_ppe >= {route_full_threshold}")
+    print(f"  watch-window [ 5500- 8000ms]: {watch_ok}/{watch_total} ticks have no_ppe >= {route_watch_threshold}")
     if fails:
         for f in fails:
             print(f)
@@ -188,11 +196,16 @@ def main():
     print(f"G1 report: {args.gate_log}")
     report_header(headers, ticks, chunks)
 
+    run_start = next((h for h in headers if h.get("type") == "run_start"), {})
+    gate_config = run_start.get("gate_config") or {}
+    full_thr = gate_config.get("route_full_threshold")
+    watch_thr = gate_config.get("route_watch_threshold")
+
     check1_reasons(chunks)
     check2_frame_economy(chunks)
     check3_overhead(chunks)
     if args.demo_rules:
-        check4_window_correctness(ticks)
+        check4_window_correctness(ticks, full_thr, watch_thr)
     else:
         print("\n[4] Window correctness - skipped (pass --demo-rules to enable)")
     check5_no_downrating(chunks)

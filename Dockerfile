@@ -34,7 +34,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     # OpenCV / video codec dependencies
     libglib2.0-0 libsm6 libxrender1 libxext6 \
     libavcodec-dev libavformat-dev libswscale-dev libv4l-dev \
-    libgl1 libglx-mesa0 \
+    libgl1 libglx-mesa0 libegl1 \
     # PySide6 / Qt runtime dependencies
     libxcb1 libxcb-xinerama0 libxcb-icccm4 libxcb-image0 \
     libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 \
@@ -115,7 +115,8 @@ RUN pip install --no-cache-dir \
     certifi==2026.4.22 \
     charset-normalizer==3.4.7 \
     idna==3.15 \
-    PySide6==6.11.1
+    PySide6==6.11.1 \
+    pytest==8.4.2
 
 # --------------------------------------------------------------------------- #
 # 4. Environment variables

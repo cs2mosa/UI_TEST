@@ -2,10 +2,12 @@
 """
 jev_adapter.py - JEV decider interface, validate_probs, evaluate_tick, OneJevDecider.
 
-Imports: dataclasses, typing, time, math, cv2, numpy, app.core.*.
+Imports: copy, dataclasses, typing, time, math, logging, cv2, numpy, app.core.*.
 No torch/transformers at module level (lazy, I-5).
 """
+import copy
 import math
+import logging
 import os
 import time
 from typing import Protocol, runtime_checkable
@@ -47,6 +49,50 @@ HAZARD_QUESTIONS: dict[str, str] = {
         "or an object on the walking or driving surface that creates a slip, trip or collision risk"
     ),
 }
+
+# ---------------------------------------------------------------------------
+# Shared-prefix helpers (design_v3 §5.2) — pure, testable without a model
+# ---------------------------------------------------------------------------
+MARKER: str = "@@JEV_PREFIX_MARK@@"
+
+
+def split_prompt_suffixes(prefix_render: str, full_renders: list[str]) -> list[str]:
+    """
+    prefix_render is apply_chat_template output for messages whose user text ends
+    with MARKER, rendered with add_generation_prompt=False. full_renders are the
+    five per-hazard renders (add_generation_prompt=True). Every full render MUST
+    start with prefix_render[:index_of_MARKER]; otherwise raise
+    ValueError('prompt prefix mismatch'). Returns the five string suffixes
+    full_renders[i][len(prefix_cut):].
+    """
+    idx = prefix_render.find(MARKER)
+    if idx < 0:
+        raise ValueError("prompt prefix mismatch")
+    prefix_cut = prefix_render[:idx]
+    suffixes: list[str] = []
+    for full in full_renders:
+        if not full.startswith(prefix_cut):
+            raise ValueError("prompt prefix mismatch")
+        suffixes.append(full[len(prefix_cut):])
+    return suffixes
+
+
+def suffix_position_ids(last_prefix_positions: "torch.Tensor", suffix_len: int) -> "torch.Tensor":
+    """
+    last_prefix_positions: [3] positions of the final prefix token (captured per
+    design_v3 §5.2 step 3). Returns [3, 1, suffix_len] where element [a, 0, j] =
+    last_prefix_positions[a] + 1 + j.
+    """
+    import torch
+
+    start = last_prefix_positions.reshape(3, 1, 1)
+    steps = torch.arange(
+        1, suffix_len + 1,
+        device=last_prefix_positions.device,
+        dtype=last_prefix_positions.dtype,
+    ).view(1, 1, -1)
+    return start + steps
+
 
 # ---------------------------------------------------------------------------
 # JevDecider Protocol (§7.3)
@@ -217,6 +263,23 @@ class OneJevDecider:
             model_path, dtype=torch.bfloat16
         ).to("cuda")
         model.eval()
+
+        # fp32 LM-head upcast (design_v3 §5.1; port of qev engine._upcast_head):
+        # bf16 logits at magnitude 25-50 quantize to 0.125 steps (~3% probability
+        # steps, exact ties), so the head is untied (clone) and computed in fp32
+        # while the rest of the forward stays bf16.
+        head = model.get_output_embeddings()
+        if head is None or not hasattr(head, "weight"):
+            self.head_dtype = "model"
+            logging.getLogger(__name__).warning(
+                "model has no separable output head; logits stay in the model dtype"
+            )
+        else:
+            self.head_dtype = "float32"
+            head.weight = torch.nn.Parameter(head.weight.detach().clone().to(torch.float32), requires_grad=False)
+            if getattr(head, "bias", None) is not None:
+                head.bias = torch.nn.Parameter(head.bias.detach().clone().to(torch.float32), requires_grad=False)
+            head.register_forward_pre_hook(lambda module, args: (args[0].to(torch.float32),) + tuple(args[1:]))
         self._model = model
         self._torch = torch
 
@@ -228,35 +291,33 @@ class OneJevDecider:
             raise RuntimeError("slot letters are not single tokens")
         self._id_a = id_a_list[0]
         self._id_b = id_b_list[0]
+        self.mode = "shared"  # §5.2 path; "fullpass" = the v2 five-pass path (DEV-B2 only)
 
     def __call__(
         self,
         frames_rgb: list[np.ndarray],
         fps: float,
         t_ms: int,
+        *,
+        order: str = "ab",
     ) -> dict[str, float]:
         """
-        One forward pass per hazard question (Appendix A §4-6).
+        Shared-prefix tick evaluation (design_v3 §5.2): one processor call and one
+        video prefill per tick, five text-only suffix branches off deep-copied caches.
+        mode == "fullpass" keeps the v2 five-pass path (DEV-B2 equivalence only).
         Returns {hazard: p_yes} for all five hazards.
         """
-        import torch
-        from PIL import Image
+        if order not in ("ab", "ba"):
+            raise ValueError(f"invalid order: {order!r}")
+        if self.mode == "fullpass":
+            return self._call_fullpass(frames_rgb, fps, t_ms, order=order)
+        return self._call_shared(frames_rgb, fps, t_ms, order=order)
 
-        # Media prep (Appendix A §2)
-        frames_pil = [Image.fromarray(f) for f in frames_rgb]
-        n = len(frames_pil)
-        try:
-            from transformers.image_utils import VideoMetadata  # type: ignore
-            video_metadata = [VideoMetadata(
-                total_num_frames=n,
-                fps=fps,
-                frames_indices=list(range(n)),
-                duration=n / fps if fps > 0 else 1.0,
-            )]
-        except ImportError:
-            video_metadata = None
+    # ------------------------------------------------------------------
+    # Prompt construction (verbatim v2 texts; "ba" swaps the two option lines)
+    # ------------------------------------------------------------------
 
-        # State block (Appendix A §3)
+    def _build_messages(self, order: str) -> tuple[str, str, list[list[dict]]]:
         import json as _json
         state = {
             "task": (
@@ -269,27 +330,183 @@ class OneJevDecider:
             "clip": "<video:1>",
         }
         state_str = f"<state>\n{_json.dumps(state, indent=2)}\n</state>"
+        system_prompt = (
+            "Apply the question to the state. "
+            "Choose exactly one of the listed options. "
+            "Respond with only its uppercase letter, with no explanation or reasoning."
+        )
 
-        results: dict[str, float] = {}
+        messages_list: list[list[dict]] = []
         for h in HAZARD_QUESTIONS:
             question_text = HAZARD_QUESTIONS[h]
-
-            # Build prompt (Appendix A §4)
+            if order == "ba":
+                options_block = (
+                    f"Options:\nA. no: the statement is false / the answer is no\nB. yes: {question_text}\n\n"
+                )
+            else:
+                options_block = (
+                    f"Options:\nA. yes: {question_text}\nB. no: the statement is false / the answer is no\n\n"
+                )
             user_text = (
                 f"{state_str}\n\nQuestion: Is the statement true, or is the answer to the question yes?\n\n"
-                f"Options:\nA. yes: {question_text}\nB. no: the statement is false / the answer is no\n\n"
+                f"{options_block}"
                 "Answer with one letter: A, B."
             )
-            system_prompt = (
-                "Apply the question to the state. "
-                "Choose exactly one of the listed options. "
-                "Respond with only its uppercase letter, with no explanation or reasoning."
-            )
-
-            messages = [
+            messages_list.append([
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": [{"type": "video"}, {"type": "text", "text": user_text}]},
-            ]
+            ])
+        return state_str, system_prompt, messages_list
+
+    def _prepare_media(self, frames_rgb: list[np.ndarray], fps: float):
+        from PIL import Image
+
+        frames_pil = [Image.fromarray(f) for f in frames_rgb]
+        n = len(frames_pil)
+        try:
+            from transformers.image_utils import VideoMetadata  # type: ignore
+            video_metadata = [VideoMetadata(
+                total_num_frames=n,
+                fps=fps,
+                frames_indices=list(range(n)),
+                duration=n / fps if fps > 0 else 1.0,
+            )]
+        except ImportError:
+            video_metadata = None
+        return frames_pil, video_metadata
+
+    def _decoder_layers(self) -> list:
+        model = self._model
+        for path in ("model.language_model.layers", "language_model.layers", "model.model.layers"):
+            obj = model
+            for part in path.split("."):
+                obj = getattr(obj, part, None)
+                if obj is None:
+                    break
+            if obj is not None:
+                return list(obj)
+        raise RuntimeError("could not locate language-model decoder layers for position capture")
+
+    # ------------------------------------------------------------------
+    # §5.2 shared-prefix path
+    # ------------------------------------------------------------------
+
+    def _call_shared(
+        self,
+        frames_rgb: list[np.ndarray],
+        fps: float,
+        t_ms: int,
+        *,
+        order: str = "ab",
+    ) -> dict[str, float]:
+        import torch
+
+        frames_pil, video_metadata = self._prepare_media(frames_rgb, fps)
+        state_str, system_prompt, messages_list = self._build_messages(order)
+
+        # Step 1: renders + suffix split (video placeholder stays inside the prefix)
+        prefix_user_text = f"{state_str}{MARKER}"
+        prefix_messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": [{"type": "video"}, {"type": "text", "text": prefix_user_text}]},
+        ]
+        prefix_render = self._processor.apply_chat_template(
+            prefix_messages, tokenize=False, add_generation_prompt=False
+        )
+        full_renders = [
+            self._processor.apply_chat_template(m, tokenize=False, add_generation_prompt=True)
+            for m in messages_list
+        ]
+        suffixes = split_prompt_suffixes(prefix_render, full_renders)
+        prefix_cut = prefix_render[: prefix_render.index(MARKER)]
+
+        # Step 2: one processor call + one prefill on the cut prefix render
+        # (no explicit position_ids — the model computes them internally)
+        proc_kwargs: dict = {
+            "text": [prefix_cut],
+            "videos": [frames_pil],
+            "videos_kwargs": {"do_sample_frames": False, "cap_pixels_per_frame": True},
+            "return_tensors": "pt",
+        }
+        if video_metadata is not None:
+            proc_kwargs["video_metadata"] = video_metadata
+        inputs = self._processor(**proc_kwargs)
+        inputs = {k: v.to("cuda") if hasattr(v, "to") else v for k, v in inputs.items()}
+        device = inputs["input_ids"].device
+        P_exp = inputs["input_ids"].shape[1]
+
+        # Step 3: position capture — forward pre-hooks record each decoder layer's
+        # position_ids; the suffix continues at the last layer's final position + 1
+        # on all three axes.
+        recorded: list = []
+        handles = []
+        for layer in self._decoder_layers():
+            def _recorder(module, args, kwargs, _store=recorded):
+                _store.append(kwargs.get("position_ids"))
+                return None
+            handles.append(layer.register_forward_pre_hook(_recorder, with_kwargs=True))
+        try:
+            with torch.no_grad():
+                out = self._model(**inputs, use_cache=True, return_dict=True, logits_to_keep=1)
+            prefix_cache = out.past_key_values
+        finally:
+            for handle in handles:
+                handle.remove()
+        if not recorded or recorded[-1] is None:
+            raise RuntimeError("position capture failed: no position_ids on the decoder layers")
+        last_prefix_positions = recorded[-1][:, -1]
+        del out
+
+        # Step 4: five text-only suffix branches off deep-copied caches
+        slot_ids = [self._id_a, self._id_b] if order == "ab" else [self._id_b, self._id_a]
+        tok = self._processor.tokenizer
+        results: dict[str, float] = {}
+        for hazard, suffix_text in zip(HAZARD_QUESTIONS, suffixes):
+            suffix_ids = tok.encode(suffix_text, add_special_tokens=False)
+            cache = copy.deepcopy(prefix_cache)
+            try:
+                with torch.no_grad():
+                    out = self._model(
+                        input_ids=torch.tensor([suffix_ids], device=device),
+                        attention_mask=torch.ones(
+                            (1, P_exp + len(suffix_ids)), dtype=torch.long, device=device
+                        ),
+                        position_ids=suffix_position_ids(last_prefix_positions, len(suffix_ids)),
+                        past_key_values=cache,
+                        use_cache=True,
+                        return_dict=True,
+                        logits_to_keep=1,
+                    )
+                slot_logits = out.logits[0, -1][slot_ids].float()
+            finally:
+                del cache
+            # Step 5: slot readout and softmax (T=1.0; fp32 head from §5.1)
+            slot_logits = slot_logits - slot_logits.max()
+            exp = torch.exp(slot_logits)
+            p_yes = float((exp[0] / exp.sum()).clamp(0.0, 1.0))
+            results[hazard] = p_yes
+        del prefix_cache
+        return results
+
+    # ------------------------------------------------------------------
+    # v2 five-pass path (kept for the DEV-B2 equivalence measurement only)
+    # ------------------------------------------------------------------
+
+    def _call_fullpass(
+        self,
+        frames_rgb: list[np.ndarray],
+        fps: float,
+        t_ms: int,
+        *,
+        order: str = "ab",
+    ) -> dict[str, float]:
+        import torch
+
+        frames_pil, video_metadata = self._prepare_media(frames_rgb, fps)
+        _state_str, _system_prompt, messages_list = self._build_messages(order)
+
+        results: dict[str, float] = {}
+        for h, messages in zip(HAZARD_QUESTIONS, messages_list):
             text = self._processor.apply_chat_template(
                 messages, tokenize=False, add_generation_prompt=True
             )
@@ -307,7 +524,8 @@ class OneJevDecider:
             # Readout (Appendix A §5)
             with torch.no_grad():
                 out = self._model(**inputs, logits_to_keep=1)
-            slot_logits = out.logits[0, -1][[self._id_a, self._id_b]].float()
+            slot_ids = [self._id_a, self._id_b] if order == "ab" else [self._id_b, self._id_a]
+            slot_logits = out.logits[0, -1][slot_ids].float()
             # softmax with T=1.0
             slot_logits = slot_logits - slot_logits.max()
             exp = torch.exp(slot_logits)

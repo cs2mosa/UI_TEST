@@ -51,6 +51,10 @@ class GateConfig:
     route_rise_delta: float = 0.10
     route_hold_chunks: int = 2
     route_reduced_fps: float = 1.0
+    route_watch_exit_threshold: float | None = None   # hysteresis exit; None = disabled
+    route_min_consecutive_watch: int = 0              # 0 or 1 = fire immediately (v2 behaviour)
+    ewma_alpha: float | None = None                   # None = EWMA off
+    prompt_hash: str = ""                             # Phase C; flows into GateLog via to_dict()
 
     def __post_init__(self) -> None:
         if self.jev_window_s <= 0:
@@ -73,6 +77,17 @@ class GateConfig:
             raise ValueError("route_hold_chunks must be a non-negative int")
         if self.route_reduced_fps <= 0:
             raise ValueError("route_reduced_fps must be > 0")
+        if self.route_watch_exit_threshold is not None and not (
+                0 < self.route_watch_exit_threshold <= self.route_watch_threshold):
+            raise ValueError(
+                "route_watch_exit_threshold must satisfy 0 < route_watch_exit_threshold <= route_watch_threshold"
+            )
+        if (not isinstance(self.route_min_consecutive_watch, int)
+                or isinstance(self.route_min_consecutive_watch, bool)
+                or self.route_min_consecutive_watch < 0):
+            raise ValueError("route_min_consecutive_watch must be a non-negative int")
+        if self.ewma_alpha is not None and not (0 < self.ewma_alpha <= 1):
+            raise ValueError("ewma_alpha must be in (0, 1] when set")
         if self.window_ms < 1:
             raise ValueError("window_ms must be >= 1")
         if self.stride_ms < 1:
@@ -169,6 +184,7 @@ class RouteDecision:
     pmax: float | None
     rising_hazard: str | None
     hold_remaining_after: int
+    ewma: dict[str, float] | None = None
 
 
 class GateRouter:
@@ -176,6 +192,18 @@ class GateRouter:
         self._cfg = cfg
         self.prev_vec: dict[str, float] | None = None
         self.hold_remaining: int = 0
+        self.elevated: bool = False
+        self.watch_streak: int = 0
+        self.ewma: dict[str, float] | None = None
+
+    def _update_ewma(self, vec: dict[str, float]) -> None:
+        alpha = self._cfg.ewma_alpha
+        if alpha is None:
+            return
+        if self.ewma is None:
+            self.ewma = dict(vec)
+        else:
+            self.ewma = {h: alpha * vec[h] + (1.0 - alpha) * self.ewma[h] for h in HAZARDS}
 
     def decide(self, ticks: Sequence[TickRecord]) -> RouteDecision:
         cfg = self._cfg
@@ -186,6 +214,7 @@ class GateRouter:
         # Rule 1: empty or any error tick
         if not ticks or any(t.status != "ok" for t in ticks):
             self.prev_vec = None
+            self.watch_streak = 0
             return RouteDecision(
                 tier=TIER_FULL,
                 reason=REASON_INCOMPLETE,
@@ -193,6 +222,7 @@ class GateRouter:
                 pmax=None,
                 rising_hazard=None,
                 hold_remaining_after=self.hold_remaining,
+                ewma=self.ewma,
             )
 
         # Compute vec and pmax
@@ -201,11 +231,15 @@ class GateRouter:
             for h in HAZARDS
         }
         pmax = max(vec.values())
+        watch_now = ge(pmax, cfg.route_watch_threshold)
 
         # Rule 2: above_full
         if ge(pmax, cfg.route_full_threshold):
             self.hold_remaining = cfg.route_hold_chunks
             self.prev_vec = dict(vec)
+            self.elevated = True
+            self.watch_streak = 0
+            self._update_ewma(vec)
             return RouteDecision(
                 tier=TIER_FULL,
                 reason=REASON_ABOVE_FULL,
@@ -213,11 +247,16 @@ class GateRouter:
                 pmax=pmax,
                 rising_hazard=None,
                 hold_remaining_after=self.hold_remaining,
+                ewma=self.ewma,
             )
 
-        # Rule 3: above_watch
-        if ge(pmax, cfg.route_watch_threshold):
+        # Rule 3: above_watch (with the v2-min_consecutive_watch streak condition)
+        if watch_now and (cfg.route_min_consecutive_watch <= 1
+                          or self.watch_streak + 1 >= cfg.route_min_consecutive_watch):
+            self.elevated = True
+            self.watch_streak += 1
             self.prev_vec = dict(vec)
+            self._update_ewma(vec)
             return RouteDecision(
                 tier=TIER_FULL,
                 reason=REASON_ABOVE_WATCH,
@@ -225,6 +264,23 @@ class GateRouter:
                 pmax=pmax,
                 rising_hazard=None,
                 hold_remaining_after=self.hold_remaining,
+                ewma=self.ewma,
+            )
+
+        # Rule 3b: hysteresis exit — stay FULL while elevated and pmax >= exit
+        if (cfg.route_watch_exit_threshold is not None and self.elevated
+                and ge(pmax, cfg.route_watch_exit_threshold)):
+            self.prev_vec = dict(vec)
+            self.watch_streak = 0
+            self._update_ewma(vec)
+            return RouteDecision(
+                tier=TIER_FULL,
+                reason=REASON_ABOVE_WATCH,
+                vec=vec,
+                pmax=pmax,
+                rising_hazard=None,
+                hold_remaining_after=self.hold_remaining,
+                ewma=self.ewma,
             )
 
         # Rule 4: rising
@@ -235,7 +291,10 @@ class GateRouter:
                     rising_hazard = h
                     break
         if rising_hazard is not None:
+            self.elevated = True
+            self.watch_streak = self.watch_streak + 1 if watch_now else 0
             self.prev_vec = dict(vec)
+            self._update_ewma(vec)
             return RouteDecision(
                 tier=TIER_FULL,
                 reason=REASON_RISING,
@@ -243,12 +302,15 @@ class GateRouter:
                 pmax=pmax,
                 rising_hazard=rising_hazard,
                 hold_remaining_after=self.hold_remaining,
+                ewma=self.ewma,
             )
 
         # Rule 5: hold
         if self.hold_remaining > 0:
             self.hold_remaining -= 1
+            self.watch_streak = self.watch_streak + 1 if watch_now else 0
             self.prev_vec = dict(vec)
+            self._update_ewma(vec)
             return RouteDecision(
                 tier=TIER_FULL,
                 reason=REASON_HOLD,
@@ -256,10 +318,14 @@ class GateRouter:
                 pmax=pmax,
                 rising_hazard=None,
                 hold_remaining_after=self.hold_remaining,
+                ewma=self.ewma,
             )
 
         # Rule 6: clear
+        self.elevated = False
+        self.watch_streak = 0
         self.prev_vec = dict(vec)
+        self._update_ewma(vec)
         return RouteDecision(
             tier=TIER_REDUCED,
             reason=REASON_CLEAR,
@@ -267,6 +333,7 @@ class GateRouter:
             pmax=pmax,
             rising_hazard=None,
             hold_remaining_after=self.hold_remaining,
+            ewma=self.ewma,
         )
 
 
@@ -357,6 +424,7 @@ def gate_record_to_dict(rec: GateRecord, include_ticks: bool) -> dict:
         "wall_done_s": rec.wall_done_s,
         "hold_remaining_after": rec.hold_remaining_after,
         "top_tick_id": rec.top_tick_id,
+        "ewma": rec.ewma,
     }
     if include_ticks:
         d["ticks"] = [tick_to_dict(t) for t in rec.ticks]

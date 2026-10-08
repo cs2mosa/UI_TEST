@@ -276,6 +276,7 @@ class GatedBatchWorker(BatchWorker):
                     vlm_score=event.score,
                     wall_done_s=wall_done_s,
                     hold_remaining_after=decision.hold_remaining_after,
+                    ewma=decision.ewma,
                 )
 
                 ok = log.write(

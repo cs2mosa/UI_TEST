@@ -104,3 +104,4 @@ class GateRecord:
     vlm_score: float | None
     wall_done_s: float
     hold_remaining_after: int
+    ewma: dict[str, float] | None = None

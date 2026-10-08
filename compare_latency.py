@@ -348,7 +348,7 @@ def run_jev_hermes_worker(args):
     )
     import cv2 as _cv2
 
-    gate_cfg = GateConfig()
+    gate_cfg = build_gate_config(args.gate_config_json, args.watch_threshold, args.full_threshold)
 
     print(f"[*] Loading OneJev from {args.jev_model_path}...", flush=True)
     decider = OneJevDecider(args.jev_model_path)
@@ -751,6 +751,26 @@ def print_comparison_table(hermes_data, infinipot_data, jh_data=None):
     print("=" * width + "\n")
 
 
+def build_gate_config(gate_config_json, watch_threshold, full_threshold):
+    """GateConfig from a thresholds.json / GateConfig JSON; explicit
+    --watch-threshold/--full-threshold flags override the JSON when provided."""
+    if "vlm_test_ui" not in sys.path:
+        sys.path.insert(0, os.path.join(BASE_DIR, "vlm_test_ui"))
+    from app.core.jev_gate import GateConfig
+
+    data: dict = {}
+    if gate_config_json is not None:
+        with open(gate_config_json, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        if not isinstance(data, dict):
+            raise ValueError(f"{gate_config_json}: expected a JSON object")
+    if watch_threshold is not None:
+        data["route_watch_threshold"] = watch_threshold
+    if full_threshold is not None:
+        data["route_full_threshold"] = full_threshold
+    return GateConfig(**data)
+
+
 def main():
     parser = argparse.ArgumentParser(description="Isolated Latency Benchmark: HERMES vs. InfiniPot-V")
     parser.add_argument("--mode", choices=["master", "worker"], default="master")
@@ -758,6 +778,13 @@ def main():
     parser.add_argument("--jev-model-path", type=str,
                         default=JEV_MODEL_PATH,
                         help="Path to OneJev-0.8B snapshot (jev_hermes engine only)")
+    parser.add_argument("--watch-threshold", type=float, default=None,
+                        help="Route watch threshold override (jev_hermes engine only)")
+    parser.add_argument("--full-threshold", type=float, default=None,
+                        help="Route full threshold override (jev_hermes engine only)")
+    parser.add_argument("--gate-config-json", type=str, default=None,
+                        help="Path to a thresholds.json / GateConfig JSON (jev_hermes engine only; "
+                             "explicit --watch-threshold/--full-threshold override it when provided)")
     parser.add_argument("--video", type=str, required=True, help="Path to test MP4 video")
     parser.add_argument("--num-chunks", type=int, default=5, help="Number of sequential chunks to benchmark")
     parser.add_argument("--chunk-s", type=float, default=5.0, help="Chunk duration in seconds")
@@ -770,6 +797,15 @@ def main():
     parser.add_argument("--prompt", type=str, default=DEFAULT_PROMPT, help="Prompt text")
     parser.add_argument("--output", type=str, default="benchmark_results.json", help="Output JSON path")
     args = parser.parse_args()
+    if args.engine in ("hermes", "infinipot") and (
+            args.watch_threshold is not None or args.full_threshold is not None
+            or args.gate_config_json is not None):
+        parser.error("--watch-threshold/--full-threshold/--gate-config-json are jev_hermes-only flags")
+    if args.gate_config_json is not None:
+        try:
+            build_gate_config(args.gate_config_json, None, None)  # fail fast at the master
+        except Exception as exc:
+            parser.error(f"--gate-config-json invalid: {exc}")
     args.model_path = ensure_model_path(args.model_path, repo_id="Qwen/Qwen3-VL-4B-Instruct")
     args.jev_model_path = ensure_model_path(args.jev_model_path, repo_id="OmniJev/OneJev-0.8B")
 
@@ -863,6 +899,12 @@ def main():
         "--jev-model-path", args.jev_model_path,
         "--output", jev_hermes_out,
     ]
+    if args.gate_config_json is not None:
+        cmd_jh += ["--gate-config-json", args.gate_config_json]
+    if args.watch_threshold is not None:
+        cmd_jh += ["--watch-threshold", str(args.watch_threshold)]
+    if args.full_threshold is not None:
+        cmd_jh += ["--full-threshold", str(args.full_threshold)]
     sub_jh = subprocess.run(cmd_jh)
     if sub_jh.returncode != 0:
         print("[!] JEV+HERMES worker exited with an error.")

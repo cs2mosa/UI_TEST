@@ -167,6 +167,8 @@ class TestGateRecordDictKeyOrder(unittest.TestCase):
         "frames_sent", "frames_full_equiv", "jev_time_s",
         "vlm_time_s", "vlm_status", "vlm_score", "wall_done_s",
         "hold_remaining_after", "top_tick_id",
+        # design_v3 §6: trailing "ewma" is the documented v3 extension of the v2 key order
+        "ewma",
     ]
 
     def test_log_4_chunk_key_order(self):

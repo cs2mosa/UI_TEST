@@ -167,11 +167,11 @@ def main():
     print("=" * 80)
     print("Testing candidate thresholds across the chunks...")
     candidate_thrs = [
-        (0.15, 0.25),
-        (0.20, 0.35),  # Current Default
-        (0.25, 0.40),
-        (0.30, 0.50),
-        (0.35, 0.60),
+        (0.70, 0.78),
+        (0.75, 0.80),
+        (0.78, 0.82),  # Calibrated Operating Point
+        (0.80, 0.84),
+        (0.82, 0.86),
     ]
 
     print(f"{'Watch Thr':<12} {'Full Thr':<12} {'Clear% (1fps)':<16} {'Full% (4fps)':<16} {'Frame Savings %'}")
@@ -201,7 +201,7 @@ def main():
         clear_pct = (tier_counts[TIER_REDUCED] / tot_chunks) * 100.0 if tot_chunks else 0
         full_pct = (tier_counts[TIER_FULL] / tot_chunks) * 100.0 if tot_chunks else 0
         saved_pct = ((total_equiv - total_sent) / total_equiv) * 100.0 if total_equiv else 0
-        curr_mark = " <- [CURRENT DEFAULT]" if (watch_t == 0.20 and full_t == 0.35) else ""
+        curr_mark = " <- [CALIBRATED OPERATING POINT]" if (watch_t == 0.78 and full_t == 0.82) else ""
         print(f"{watch_t:<12.2f} {full_t:<12.2f} {clear_pct:<15.1f}% {full_pct:<15.1f}% {saved_pct:<15.1f}%{curr_mark}")
 
     # 4. Export CSV
