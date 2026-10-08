@@ -1,1 +1,2 @@
-docker run --rm --gpus all urca-vlm:latest python -c "import torch, PySide6, cv2, transformers; print('CUDA Available:', torch.cuda.is_available()); print('Device Name:', torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'None'); print('PySide6:', PySide6.__version__, '| OpenCV:', cv2.__version__, '| Transformers:', transformers.__version__)"
+docker run --rm --gpus all urca-vlm:latest pytest /workspace/vlm_test_ui/tests/ -k "not test_hermes_engine" -q
+
