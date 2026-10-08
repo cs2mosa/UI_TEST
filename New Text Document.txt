@@ -1,2 +1,10 @@
-docker run --rm --gpus all urca-vlm:latest pytest /workspace/vlm_test_ui/tests/ -k "not test_hermes_engine" -q
-
+docker run --rm --gpus all \
+  -v $(pwd)/.hf_cache:/workspace/.hf_cache \
+  -v $(pwd):/data \
+  -v $(pwd)/results:/results \
+  urca-vlm:latest benchmark \
+    --mode worker \
+    --engine jev_hermes \
+    --video /data/procimity_placement_combined.mp4 \
+    --num-chunks 1 \
+    --output /results/benchmark_1chunk.json
