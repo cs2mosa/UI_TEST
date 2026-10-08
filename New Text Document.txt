@@ -1,80 +1,24 @@
-docker run --rm --gpus all \
-  -v $(pwd):/workspace \
-  -v $(pwd)/.hf_cache:/workspace/.hf_cache \
-  urca-vlm:latest python3 isafety_harness.py \
-    --dataset-dir /workspace/.hf_cache/hub/datasets--raiyaanabdullah--isafety-bench/snapshots/<SNAPSHOT_HASH> \
-    --mapping isafety_mapping.json \
-    --limit 20 \
-    --out /workspace/probe_scores.jsonl \
-    --dump-logits /workspace/probe_logits.jsonl
-
-
-docker run --rm --gpus all \
-  -v $(pwd):/workspace \
-  -v $(pwd)/.hf_cache:/workspace/.hf_cache \
-  urca-vlm:latest python3 isafety_harness.py \
-    --dataset-dir /workspace/.hf_cache/hub/datasets--raiyaanabdullah--isafety-bench/snapshots/<SNAPSHOT_HASH> \
-    --mapping isafety_mapping.json \
-    --null-input \
-    --order both \
-    --out /workspace/labeled_scores.jsonl
-
-
 docker run --rm \
   -v $(pwd):/workspace \
-  urca-vlm:latest python3 vlm_test_ui/scripts/calibrate_report.py \
-    /workspace/labeled_scores.jsonl \
-    --out /workspace/thresholds.json
-
-
-docker run --rm --gpus all \
-  -v $(pwd):/workspace \
-  -v $(pwd)/.hf_cache:/workspace/.hf_cache \
-  urca-vlm:latest benchmark \
-    --mode worker \
-    --engine jev_hermes \
-    --video /workspace/procimity_placement_combined.mp4 \
-    --gate-config-json /workspace/thresholds.json \
-    --output /workspace/results/benchmark_calibrated.json
-
-
-
-docker run --rm \
-  -v $(pwd)/.hf_cache:/workspace/.hf_cache \
   urca-vlm:latest python3 -c "
+from huggingface_hub import snapshot_download
 import urllib.request, os
 
-snapshot_dir = '/workspace/.hf_cache/hub/datasets--raiyaanabdullah--isafety-bench/snapshots/8336f1c57076d598677effa1da9870b300790804'
+# 1. Download/link the dataset directly to /workspace/isafety_bench
+print('[*] Resolving dataset into /workspace/isafety_bench ...')
+dest = '/workspace/isafety_bench'
+snapshot_download(
+    repo_id='raiyaanabdullah/isafety-bench',
+    repo_type='dataset',
+    local_dir=dest
+)
+
+# 2. Download annotations directly into that same folder
 base_url = 'https://raw.githubusercontent.com/iSafetyBench/data/main'
-
 for fname in ['annotations_hazard.json', 'annotations_normal.json', 'actions.txt']:
-    url = f'{base_url}/{fname}'
-    dest = os.path.join(snapshot_dir, fname)
-    print(f'Downloading {fname} -> {dest} ...')
-    urllib.request.urlretrieve(url, dest)
+    print(f'[*] Downloading {fname} ...')
+    urllib.request.urlretrieve(f'{base_url}/{fname}', os.path.join(dest, fname))
 
-print('[+] All annotation files successfully placed in snapshot!')
+print('[+] Ready! Dataset and annotations are in: /workspace/isafety_bench')
 "
-
-
-docker run --rm --gpus all \
-  -v $(pwd):/workspace \
-  -v $(pwd)/.hf_cache:/workspace/.hf_cache \
-  urca-vlm:latest python3 isafety_harness.py \
-    --dataset-dir /workspace/.hf_cache/hub/datasets--raiyaanabdullah--isafety-bench/snapshots/8336f1c57076d598677effa1da9870b300790804 \
-    --mapping isafety_mapping.json \
-    --limit 20 \
-    --out /workspace/probe_scores.jsonl \
-    --dump-logits /workspace/probe_logits.jsonl
-
-
-docker run --rm --gpus all \
-  -v $(pwd):/workspace \
-  -v $(pwd)/.hf_cache:/workspace/.hf_cache \
-  urca-vlm:latest python3 isafety_harness.py \
-    --dataset-dir /workspace/.hf_cache/hub/datasets--raiyaanabdullah--isafety-bench/snapshots/8336f1c57076d598677effa1da9870b300790804 \
-    --mapping isafety_mapping.json \
-    --null-input \
-    --order both \
-    --out /workspace/labeled_scores.jsonl
 
