@@ -32,4 +32,32 @@ path = snapshot_download(
 print('Dataset downloaded to:', path)
 "
 
+docker run --rm --gpus all \
+  -v "$(pwd):/workspace" \
+  -v "$(pwd)/.hf_cache:/workspace/.hf_cache" \
+  --entrypoint "" \
+  urca-vlm:latest \
+  python3 /workspace/isafety_harness.py \
+    --dataset-dir /workspace/isafety_dataset \
+    --mapping /workspace/isafety_mapping.json \
+    --out /workspace/labeled_scores.jsonl \
+    --null-input \
+    --order both
+
+docker run --rm \
+  -v "$(pwd):/workspace" \
+  --entrypoint "" \
+  urca-vlm:latest \
+  python3 /workspace/vlm_test_ui/scripts/calibrate_report.py \
+    /workspace/labeled_scores.jsonl \
+    --target-recall 0.97 \
+    --out /workspace/thresholds.json
+
+docker run --rm --gpus all \
+  -v "$(pwd):/workspace" \
+  --entrypoint "" \
+  urca-vlm:latest \
+  python3 /workspace/calibrate_jev.py \
+    --video /workspace/procimity_placement_combined.mp4 \
+    --gate-config-json /workspace/thresholds.json
 
