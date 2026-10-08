@@ -22,16 +22,15 @@ for fname in ['annotations_hazard.json', 'annotations_normal.json', 'actions.txt
 print('[+] Ready! Dataset and annotations are in: /workspace/isafety_bench')
 "
 
-
 docker run --rm --gpus all \
   -v $(pwd):/workspace \
   -v $(pwd)/.hf_cache:/workspace/.hf_cache \
-  urca-vlm:latest python3 isafety_harness.py \
-    --dataset-dir /workspace/.hf_cache/hub/datasets--raiyaanabdullah--isafety-bench/snapshots/8336f1c57076d598677effa1da9870b300790804 \
+  urca_vlm:latest python3 isafety_harness.py \
+    --dataset-dir /workspace/isafety_bench \
     --mapping isafety_mapping.json \
-    --limit 20 \
-    --out /workspace/probe_scores.jsonl \
-    --dump-logits /workspace/probe_logits.jsonl
+    --null-input \
+    --order both \
+    --out /workspace/labeled_scores.jsonl
 
 
 
