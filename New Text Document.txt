@@ -41,3 +41,12 @@ docker run --rm \
     --out /workspace/thresholds.json
 
 
+
+docker run --rm \
+  -v $(pwd):/workspace \
+  urca-vlm:latest python3 vlm_test_ui/scripts/calibrate_report.py \
+    /workspace/labeled_scores.jsonl \
+    --precision-floor 0.20 \
+    --watch-precision-floor 0.10 \
+    --out /workspace/thresholds.json
+
