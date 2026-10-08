@@ -22,19 +22,14 @@ for fname in ['annotations_hazard.json', 'annotations_normal.json', 'actions.txt
 print('[+] Ready! Dataset and annotations are in: /workspace/isafety_bench')
 "
 
-docker run --rm -v "$(pwd):/workspace" -e PYTHONPATH="/workspace/vlm_test_ui:/workspace" urca_vlm:latest pytest vlm_test_ui/tests/test_router_v2.py vlm_test_ui/tests/test_calibrate_report.py -v
+python3 -c "
+from huggingface_hub import snapshot_download
+path = snapshot_download(
+    repo_id='raiyaanabdullah/isafety-bench',
+    repo_type='dataset',
+    local_dir='./isafety_dataset'
+)
+print('Dataset downloaded to:', path)
+"
 
-
-docker run --rm --gpus all `
-  -v "${PWD}/.hf_cache:/workspace/.hf_cache" `
-  -v "${PWD}:/data" `
-  -v "${PWD}/results:/results" `
-  urca_vlm:latest calibrate --video /data/procimity_placement_combined.mp4 --output-csv /results/jev_calibration.csv
-
-
-docker run --rm --gpus all `
-  -v "${PWD}/.hf_cache:/workspace/.hf_cache" `
-  -v "${PWD}:/data" `
-  -v "${PWD}/results:/results" `
-  urca_vlm:latest calibrate --video /data/procimity_placement_combined.mp4 --gate-config-json /data/thresholds.json
 
