@@ -22,31 +22,19 @@ for fname in ['annotations_hazard.json', 'annotations_normal.json', 'actions.txt
 print('[+] Ready! Dataset and annotations are in: /workspace/isafety_bench')
 "
 
-
-docker run --rm --gpus all \
-  -v $(pwd):/workspace \
-  -v $(pwd)/.hf_cache:/workspace/.hf_cache \
-  urca-vlm:latest python3 isafety_harness.py \
-    --dataset-dir /workspace/isafety_bench \
-    --mapping isafety_mapping.json \
-    --null-input \
-    --order both \
-    --out /workspace/labeled_scores.jsonl
+docker run --rm -v "$(pwd):/workspace" -e PYTHONPATH="/workspace/vlm_test_ui:/workspace" urca_vlm:latest pytest vlm_test_ui/tests/test_router_v2.py vlm_test_ui/tests/test_calibrate_report.py -v
 
 
-docker run --rm \
-  -v $(pwd):/workspace \
-  urca-vlm:latest python3 vlm_test_ui/scripts/calibrate_report.py \
-    /workspace/labeled_scores.jsonl \
-    --out /workspace/thresholds.json
+docker run --rm --gpus all `
+  -v "${PWD}/.hf_cache:/workspace/.hf_cache" `
+  -v "${PWD}:/data" `
+  -v "${PWD}/results:/results" `
+  urca_vlm:latest calibrate --video /data/procimity_placement_combined.mp4 --output-csv /results/jev_calibration.csv
 
 
-
-docker run --rm \
-  -v $(pwd):/workspace \
-  urca-vlm:latest python3 vlm_test_ui/scripts/calibrate_report.py \
-    /workspace/labeled_scores.jsonl \
-    --precision-floor 0.20 \
-    --watch-precision-floor 0.10 \
-    --out /workspace/thresholds.json
+docker run --rm --gpus all `
+  -v "${PWD}/.hf_cache:/workspace/.hf_cache" `
+  -v "${PWD}:/data" `
+  -v "${PWD}/results:/results" `
+  urca_vlm:latest calibrate --video /data/procimity_placement_combined.mp4 --gate-config-json /data/thresholds.json
 
