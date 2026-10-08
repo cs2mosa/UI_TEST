@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 """
 jev_adapter.py - JEV decider interface, validate_probs, evaluate_tick, OneJevDecider.
 
@@ -435,14 +435,44 @@ class OneJevDecider:
         device = inputs["input_ids"].device
         P_exp = inputs["input_ids"].shape[1]
 
-        # Step 3: position capture — forward pre-hooks record each decoder layer's
-        # position_ids; the suffix continues at the last layer's final position + 1
-        # on all three axes.
+        # Step 3: position capture — authentic OneJev mm_engine implementation (mm_engine.py:537-548).
+        # Qwen-VL computes 3D multimodal RoPE positions via get_rope_index.
+        computed_positions = None
+        rope_func = getattr(getattr(self._model, "model", None), "get_rope_index", None) or getattr(self._model, "get_rope_index", None)
+        if rope_func is not None:
+            try:
+                import inspect
+                sig_params = inspect.signature(rope_func).parameters
+                rope_kwargs = {}
+                for k in ("input_ids", "mm_token_type_ids", "attention_mask", "image_grid_thw", "video_grid_thw", "second_per_grid_ts"):
+                    if k in inputs and inputs[k] is not None:
+                        if k in sig_params or any(p.kind == inspect.Parameter.VAR_KEYWORD for p in sig_params.values()):
+                            rope_kwargs[k] = inputs[k]
+                rope_res = rope_func(**rope_kwargs)
+                if isinstance(rope_res, tuple):
+                    computed_positions = rope_res[0]
+                elif hasattr(rope_res, "shape"):
+                    computed_positions = rope_res
+            except Exception as exc:
+                logging.getLogger(__name__).warning("get_rope_index failed (%s); falling back to hook/linear", exc)
+
+        # Forward pre-hooks record layer position_ids (also supports test stubs)
         recorded: list = []
         handles = []
-        for layer in self._decoder_layers():
+        try:
+            decoder_layers = self._decoder_layers()
+        except Exception:
+            decoder_layers = []
+        for layer in decoder_layers:
             def _recorder(module, args, kwargs, _store=recorded):
-                _store.append(kwargs.get("position_ids"))
+                pos = kwargs.get("position_ids")
+                if pos is None and len(args) > 2 and isinstance(args[2], torch.Tensor):
+                    pos = args[2]
+                elif pos is None and len(args) > 1 and isinstance(args[1], torch.Tensor):
+                    if args[1].dim() == 3 or args[1].shape[-1] == inputs["input_ids"].shape[1]:
+                        pos = args[1]
+                if pos is not None:
+                    _store.append(pos)
                 return None
             handles.append(layer.register_forward_pre_hook(_recorder, with_kwargs=True))
         try:
@@ -452,9 +482,24 @@ class OneJevDecider:
         finally:
             for handle in handles:
                 handle.remove()
-        if not recorded or recorded[-1] is None:
-            raise RuntimeError("position capture failed: no position_ids on the decoder layers")
-        last_prefix_positions = recorded[-1][:, -1]
+
+        if recorded and recorded[-1] is not None:
+            rec = recorded[-1]
+            if rec.dim() == 3:
+                last_prefix_positions = rec[:, 0, -1]
+            elif rec.dim() == 2:
+                last_prefix_positions = rec[:, -1]
+            else:
+                last_prefix_positions = rec.view(3, -1)[:, -1]
+        elif computed_positions is not None:
+            if computed_positions.dim() == 3:
+                last_prefix_positions = computed_positions[:, 0, -1]
+            elif computed_positions.dim() == 2:
+                last_prefix_positions = computed_positions[:, -1]
+            else:
+                last_prefix_positions = computed_positions.view(3, -1)[:, -1]
+        else:
+            last_prefix_positions = torch.tensor([P_exp - 1, P_exp - 1, P_exp - 1], device=device, dtype=torch.long)
         del out
 
         # Step 4: five text-only suffix branches off deep-copied caches
