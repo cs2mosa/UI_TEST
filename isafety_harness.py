@@ -236,6 +236,14 @@ def score_item(decider, item: dict, sample_fps: float, max_side: int, order_prob
         score_s = time.perf_counter() - t0
         probs_ba = decider(frames_rgb, sample_fps, 0, order="ba") if order_probe else None
     expected_captures = len(HAZARD_QUESTIONS) * (2 if order_probe else 1)
+    # In shared-prefix mode, the prefix forward fires the LM head once per decider call before the hazard branches
+    n_h = len(HAZARD_QUESTIONS)
+    if len(capture.logits) == (n_h + 1) * (2 if order_probe else 1):
+        if order_probe:
+            capture.logits = capture.logits[1 : n_h + 1] + capture.logits[n_h + 2 : 2 * n_h + 2]
+        else:
+            capture.logits = capture.logits[1 : n_h + 1]
+
     if len(capture.logits) != expected_captures:
         return {"skipped": f"logit_capture_mismatch ({len(capture.logits)} of {expected_captures})"}
 
