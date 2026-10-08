@@ -397,8 +397,8 @@ def run_jev_hermes_worker(args):
         for tick_idx in chunk_tick_ids:
             t_ms = tick_times[tick_idx]
             tr = evaluate_tick(decider, cap_jev, len(tick_records), t_ms, gate_cfg)
-            print(f"[*] Tick t={t_ms}ms: status={tr.status} | error={tr.error} | probs={tr.probs}", flush=True)
             tick_records.append(tr)
+            print(f"[*] Tick t={tr.t_ms}ms: status={tr.status} | probs={tr.probs} | error={tr.error}", flush=True)
         jev_time_s = time.perf_counter() - t_jev_start
 
         decision = router.decide(tick_records)
