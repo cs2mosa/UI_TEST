@@ -389,12 +389,13 @@ def run_jev_hermes_worker(args):
 
     for idx, cdata in enumerate(chunks_data):
         start_ms, end_ms = cdata["start_ms"], cdata["end_ms"]
-        chunk_tick_times = assigned[idx] if idx < len(assigned) else []
+        chunk_tick_ids = assigned[idx] if idx < len(assigned) else []
 
         # JEV phase
         t_jev_start = time.perf_counter()
         tick_records = []
-        for t_ms in chunk_tick_times:
+        for tick_idx in chunk_tick_ids:
+            t_ms = tick_times[tick_idx]
             tr = evaluate_tick(decider, cap_jev, len(tick_records), t_ms, gate_cfg)
             tick_records.append(tr)
         jev_time_s = time.perf_counter() - t_jev_start
