@@ -1,10 +1,11 @@
-docker run --rm --gpus all \
+docker run --rm \
   -v $(pwd)/.hf_cache:/workspace/.hf_cache \
-  -v $(pwd):/data \
-  -v $(pwd)/results:/results \
-  urca-vlm:latest benchmark \
-    --mode worker \
-    --engine jev_hermes \
-    --video /data/procimity_placement_combined.mp4 \
-    --num-chunks 1 \
-    --output /results/benchmark_1chunk.json
+  urca-vlm:latest python3 -c "
+from huggingface_hub import snapshot_download
+path = snapshot_download(
+    repo_id='raiyaanabdullah/isafety-bench',
+    repo_type='dataset',
+    cache_dir='/workspace/.hf_cache'
+)
+print(f'[+] Dataset downloaded to: {path}')
+"
