@@ -80,3 +80,25 @@ docker run --rm \
     --gate-config-json /workspace/thresholds.json \
     --output-csv /workspace/jev_calibration_log.csv
 
+
+
+{
+  "route_watch_threshold": 0.78,
+  "route_full_threshold": 0.82,
+  "hazard_full_thresholds": {
+    "pedestrian_vehicle": 0.82,
+    "unsafe_load": 0.75,
+    "fall_or_spill": 0.80,
+    "no_ppe": 0.85,
+    "blocked_exit": 0.85
+  },
+  "hazard_watch_thresholds": {
+    "pedestrian_vehicle": 0.78,
+    "unsafe_load": 0.65,
+    "fall_or_spill": 0.75,
+    "no_ppe": 0.80,
+    "blocked_exit": 0.80
+  },
+  "calibration_method": "operational_spike_isolation",
+  "note": "Calibrated to warehouse OneJev score dynamics: isolates genuine hazard spikes (>0.82) to 4 FPS while dropping routine worker/machinery motion to 1 FPS for 25-35% frame economy"
+}
