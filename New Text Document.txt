@@ -1,4 +1,4 @@
-ocker run --rm \
+docker run --rm \
   -v $(pwd):/workspace \
   urca-vlm:latest python3 -c "
 from huggingface_hub import snapshot_download
@@ -70,4 +70,13 @@ docker run --rm \
     --target-recall 0.97 \
     --precision-floor 0.0 \
     --out /workspace/thresholds.json
+
+docker run --rm \
+  --gpus all \
+  -v $(pwd):/workspace \
+  urca_vlm \
+  python3 calibrate_jev.py \
+    --video /workspace/procimity_placement_combined.mp4 \
+    --gate-config-json /workspace/thresholds.json \
+    --output-csv /workspace/jev_calibration_log.csv
 
